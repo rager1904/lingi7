@@ -44,11 +44,4 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": "DEBUG"},
 }
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": "redis://redis:6379/0",
-        "KEY_PREFIX": "lingi7",
-        "TIMEOUT": 300,
-    }
-}
+# CACHES inherited from base.py — uses Redis if available, falls back to LocMemCache

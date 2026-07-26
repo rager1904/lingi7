@@ -1,6 +1,6 @@
 import { ProductFields, AugmentedData, AIServiceHealthStatus, PolicyDocument, PolicyUploadResult, ManualKnowledge, ManualExtractResult } from '../types';
 
-const LINGI7_API_BASE = process.env.NEXT_PUBLIC_LINGI7_API_BASE || 'http://localhost:8000/api/v1';
+const LINGI7_API_BASE = process.env.NEXT_PUBLIC_LINGI7_API_BASE || '/api/v1';
 const ENRICHMENT_BASE = `${LINGI7_API_BASE.replace(/\/$/, '')}/products/enrichment-workbench`;
 
 function authHeaders(): HeadersInit {

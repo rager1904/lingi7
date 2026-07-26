@@ -33,12 +33,17 @@ def lingi7_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
     if response is None:
         # Unhandled exception — let Sentry capture it, return 500
         logger.exception("Unhandled exception in view: %s", context.get("view"))
+        from django.conf import settings
+        detail = None
+        if getattr(settings, "DEBUG", False):
+            import traceback
+            detail = traceback.format_exc()
         return Response(
             {
                 "error": {
                     "code": "internal_server_error",
                     "message": "An unexpected error occurred. Our team has been notified.",
-                    "detail": None,
+                    "detail": detail,
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

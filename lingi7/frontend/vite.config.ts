@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    allowedHosts: true,
     proxy: {
       // Proxy API calls to Django in development — no CORS issues
       "/api": {

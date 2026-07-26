@@ -3,14 +3,8 @@ apps/escrow/migrations/0001_initial.py
 
 Initial migration for the escrow system.
 
-NOTE: The escrow_ledger schema must be pre-created before applying
-this migration. In docker-compose, this is handled by the init SQL:
-
-    CREATE SCHEMA IF NOT EXISTS escrow_ledger;
-
-This is safe to run multiple times. Add this to your
-docker-compose db init scripts or run manually once:
-    docker exec lingi7_db psql -U lingi7 -d lingi7 -c "CREATE SCHEMA IF NOT EXISTS escrow_ledger;"
+For PostgreSQL, the escrow_ledger schema must be pre-created.
+For SQLite, schemas are not supported — tables use simple names.
 """
 from __future__ import annotations
 
@@ -22,6 +16,20 @@ import django.utils.timezone
 from django.db import migrations, models
 
 
+def _is_sqlite(apps, schema_editor):
+    return schema_editor.connection.vendor == "sqlite"
+
+
+def create_schema_forward(apps, schema_editor):
+    if not _is_sqlite(apps, schema_editor):
+        schema_editor.execute("CREATE SCHEMA IF NOT EXISTS escrow_ledger;")
+
+
+def drop_schema(apps, schema_editor):
+    if not _is_sqlite(apps, schema_editor):
+        schema_editor.execute("DROP SCHEMA IF EXISTS escrow_ledger CASCADE;")
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -29,11 +37,7 @@ class Migration(migrations.Migration):
     dependencies = []
 
     operations = [
-        # Ensure escrow_ledger schema exists (idempotent)
-        migrations.RunSQL(
-            sql="CREATE SCHEMA IF NOT EXISTS escrow_ledger;",
-            reverse_sql="DROP SCHEMA IF EXISTS escrow_ledger CASCADE;",
-        ),
+        migrations.RunPython(create_schema_forward, drop_schema),
         migrations.CreateModel(
             name="EscrowAccount",
             fields=[
@@ -61,7 +65,7 @@ class Migration(migrations.Migration):
                 ("frozen_at", models.DateTimeField(blank=True, null=True)),
             ],
             options={
-                "db_table": '"escrow_ledger"."escrow_account"',
+                "db_table": "escrow_account",
             },
         ),
         migrations.CreateModel(
@@ -85,7 +89,7 @@ class Migration(migrations.Migration):
                 ("created_by_ref", models.UUIDField(blank=True, null=True)),
             ],
             options={
-                "db_table": '"escrow_ledger"."ledger_entry"',
+                "db_table": "ledger_entry",
             },
         ),
         migrations.CreateModel(

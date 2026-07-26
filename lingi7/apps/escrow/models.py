@@ -20,7 +20,7 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import models
+from django.db import connection, models
 from django.utils import timezone
 
 from apps.escrow.state_machine import EscrowState
@@ -37,7 +37,7 @@ class EscrowAccount(models.Model):
     """
 
     class Meta:
-        db_table = '"escrow_ledger"."escrow_account"'
+        db_table = "escrow_account" if connection.vendor == "sqlite" else '"escrow_ledger"."escrow_account"'
         indexes = [
             models.Index(fields=["state"], name="idx_escrow_account_state"),
             models.Index(fields=["order_ref"], name="idx_escrow_account_order_ref"),
@@ -102,7 +102,7 @@ class LedgerEntry(models.Model):
     """
 
     class Meta:
-        db_table = '"escrow_ledger"."ledger_entry"'
+        db_table = "ledger_entry" if connection.vendor == "sqlite" else '"escrow_ledger"."ledger_entry"'
         indexes = [
             models.Index(fields=["account", "created_at"], name="idx_ledger_account_ts"),
             models.Index(fields=["entry_type"], name="idx_ledger_entry_type"),

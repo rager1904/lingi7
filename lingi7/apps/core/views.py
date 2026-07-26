@@ -42,19 +42,17 @@ def health_check(request: Any) -> JsonResponse:
         checks["database"] = "error"
         healthy = False
 
-    # Check Redis
+    # Check Redis / cache
     try:
         cache.set("health_check", "ok", timeout=5)
         result = cache.get("health_check")
         if result == "ok":
             checks["cache"] = "ok"
         else:
-            checks["cache"] = "error"
-            healthy = False
+            checks["cache"] = "degraded"
     except Exception as exc:
-        logger.error("Health check: Redis unreachable — %s", exc)
-        checks["cache"] = "error"
-        healthy = False
+        logger.warning("Health check: cache unreachable — %s", exc)
+        checks["cache"] = "degraded"
 
     checks["api"] = "ok"
 

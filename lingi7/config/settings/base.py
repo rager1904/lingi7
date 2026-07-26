@@ -207,15 +207,28 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
-# ── Cache (Redis) ─────────────────────────────────────────────────────────────
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": config("REDIS_URL", default="redis://localhost:6379/0"),
-        "KEY_PREFIX": "lingi7",
-        "TIMEOUT": 300,
+# ── Cache (Redis, with LocMem fallback for Colab/dev) ─────────────────────────
+_redis_url = config("REDIS_URL", default="redis://localhost:6379/0")
+try:
+    import socket as _sock
+    _host, _port = _redis_url.replace("redis://", "").split(":")[0], int(_redis_url.split(":")[-1].split("/")[0])
+    _sock.create_connection((_host, _port), timeout=1)
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+            "KEY_PREFIX": "lingi7",
+            "TIMEOUT": 300,
+        }
     }
-}
+except Exception:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "lingi7-locmem",
+            "TIMEOUT": 300,
+        }
+    }
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"

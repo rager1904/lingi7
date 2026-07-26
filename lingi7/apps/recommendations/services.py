@@ -28,7 +28,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import (
     Avg,
     Count,
@@ -125,8 +125,9 @@ def get_similar_products(
 
     # Build scoring query
     tag_filter = Q()
-    for tag in (product.suggested_tags or [])[:8]:
-        tag_filter |= Q(suggested_tags__icontains=tag)
+    if connection.vendor != "sqlite":
+        for tag in (product.suggested_tags or [])[:8]:
+            tag_filter |= Q(suggested_tags__icontains=tag)
 
     same_category = Q(category=product.category)
     price_band = _price_band_q(product.price)
@@ -236,13 +237,20 @@ def get_similar_users_top_picks(user, limit: int = 20) -> list[Product]:
     top_tags = sorted(prefs.get("tag_weights", {}), key=prefs.get("tag_weights", {}).get, reverse=True)[:10]
 
     # Find users with overlapping category interests
-    similar_users = (
-        UserPreference.objects.filter(
-            category_weights__has_any_keys=top_cats,
+    if connection.vendor != "sqlite":
+        similar_users = list(
+            UserPreference.objects.filter(
+                category_weights__has_any_keys=top_cats,
+            )
+            .exclude(user=user)
+            .order_by("-engagement_score")[:50]
         )
-        .exclude(user=user)
-        .order_by("-engagement_score")[:50]
-    )
+    else:
+        similar_users = [
+            up
+            for up in UserPreference.objects.exclude(user=user).order_by("-engagement_score")[:200]
+            if any(k in (up.category_weights or {}) for k in top_cats)
+        ][:50]
 
     if not similar_users:
         return []
@@ -642,11 +650,18 @@ def _collaborative_filter(user, limit: int = 10) -> list[Product]:
     if not top_cats:
         return []
 
-    similar_users = (
-        UserPreference.objects.filter(category_weights__has_any_keys=top_cats)
-        .exclude(user=user)
-        .order_by("-engagement_score")[:30]
-    )
+    if connection.vendor != "sqlite":
+        similar_users = list(
+            UserPreference.objects.filter(category_weights__has_any_keys=top_cats)
+            .exclude(user=user)
+            .order_by("-engagement_score")[:30]
+        )
+    else:
+        similar_users = [
+            up
+            for up in UserPreference.objects.exclude(user=user).order_by("-engagement_score")[:200]
+            if any(k in (up.category_weights or {}) for k in top_cats)
+        ][:30]
 
     if not similar_users:
         return []

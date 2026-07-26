@@ -15,6 +15,7 @@ from typing import Any
 
 import requests
 from django.conf import settings
+from django.db import connection
 from django.db.models import Count, Q
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -156,14 +157,15 @@ class SemanticProductSearchView(APIView):
         condition: str,
         limit: int,
     ):
-        qs = _visible_products().filter(
+        text_q = (
             Q(name__icontains=query)
             | Q(description__icontains=query)
             | Q(meta_title__icontains=query)
             | Q(meta_description__icontains=query)
-            | Q(search_keywords__icontains=query)
-            | Q(suggested_tags__icontains=query)
         )
+        if connection.vendor != "sqlite":
+            text_q |= Q(search_keywords__icontains=query) | Q(suggested_tags__icontains=query)
+        qs = _visible_products().filter(text_q)
         if category:
             qs = qs.filter(Q(category__slug=category) | Q(category__name__iexact=category))
         if min_price is not None:
@@ -227,11 +229,13 @@ class SimilarProductView(APIView):
         except Product.DoesNotExist:
             return Response({"success": False, "detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        tag_filter = Q()
-        for tag in product.suggested_tags[:8]:
-            tag_filter |= Q(suggested_tags__icontains=tag)
-
-        qs = _visible_products().exclude(pk=product.pk).filter(Q(category=product.category) | tag_filter)
+        if connection.vendor != "sqlite":
+            tag_filter = Q()
+            for tag in product.suggested_tags[:8]:
+                tag_filter |= Q(suggested_tags__icontains=tag)
+            qs = _visible_products().exclude(pk=product.pk).filter(Q(category=product.category) | tag_filter)
+        else:
+            qs = _visible_products().exclude(pk=product.pk).filter(category=product.category)
         products = list(qs.order_by("price", "-created_at")[:limit])
         return Response(_response(_serialize_products(products, request), source="product-similarity"))
 

@@ -11,6 +11,7 @@ API docs:    /api/schema/ — OpenAPI spec (disabled in production).
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import (
     SpectacularAPIView,
@@ -20,6 +21,25 @@ from drf_spectacular.views import (
 
 from apps.core.views import health_check, platform_status
 
+
+def _debug_register(request):
+    import json
+    import traceback
+    from django.test.client import Client
+    try:
+        c = Client()
+        r = c.post('/api/v1/auth/register/', data=json.dumps({
+            'phone_number': '+260971234599', 'password': 'TestPass123!',
+            'password_confirm': 'TestPass123!', 'first_name': 'Test',
+            'last_name': 'User', 'consent_given': True
+        }), content_type='application/json')
+        return JsonResponse({
+            'status': r.status_code,
+            'body': r.content.decode()[:2000],
+        })
+    except Exception:
+        return JsonResponse({'error': traceback.format_exc()}, status=500)
+
 # ── Admin panel customisation ─────────────────────────────────────────────────
 admin.site.site_header = "Lingi7 Administration"
 admin.site.site_title = "Lingi7 Admin"
@@ -27,6 +47,9 @@ admin.site.index_title = "Platform Management"
 
 # ── URL patterns ──────────────────────────────────────────────────────────────
 urlpatterns = [
+    # Debug endpoint (temporary)
+    path("_debug/register/", _debug_register, name="debug-register"),
+
     # Admin
     path("admin/", admin.site.urls),
 

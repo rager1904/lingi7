@@ -98,14 +98,23 @@ TEMPLATES = [
 # ── Database ──────────────────────────────────────────────────────────────────
 import dj_database_url  # noqa: E402
 
-DATABASES = {
-    "default": dj_database_url.config(
-        env="DATABASE_URL",
-        default="sqlite:///db.sqlite3",
-        conn_max_age=600,           # Persistent connections — important for Gunicorn
-        conn_health_checks=True,    # Check connection health before reuse
-    )
-}
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url and not _database_url.startswith("sqlite"):
+    DATABASES = {
+        "default": dj_database_url.config(
+            env="DATABASE_URL",
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    _db_name = "/content/lingi7/lingi7/db.sqlite3" if os.path.isdir("/content/lingi7") else "db.sqlite3"
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": _db_name,
+        }
+    }
 
 # Escrow ledger uses a separate PostgreSQL schema for access isolation.
 # The escrow service connects as a restricted user that can ONLY write to this schema.

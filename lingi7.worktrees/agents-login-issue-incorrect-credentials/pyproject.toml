@@ -1,0 +1,66 @@
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | migrations
+  | __pycache__
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_django = ["django"]
+known_first_party = ["apps", "config"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "DJANGO", "FIRSTPARTY", "LOCALFOLDER"]
+skip = ["migrations", ".venv"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",     # Fail on unknown markers
+    "-ra",                  # Show extra summary for all except passed
+    "--tb=short",           # Shorter tracebacks
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m not slow')",
+    "integration: marks integration tests that hit the DB",
+    "unit: marks pure unit tests with no DB or network access",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["apps"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/__init__.py",
+    "*/admin.py",
+]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv"]
+skips = ["B101"]    # Allow assert statements in tests

@@ -1,0 +1,99 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls static %}
+
+{% block title %}Dispatch Shipments - Django Admin{% endblock %}
+
+{% block extrahead %}
+<style>
+  .affected-items {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    padding: 12px;
+  }
+  .affected-items h3 {
+    margin-top: 0;
+    color: #333;
+  }
+  .affected-items ul {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0 0;
+  }
+  .affected-items li {
+    padding: 6px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .affected-items li:last-child {
+    border-bottom: none;
+  }
+  .affected-items .badge {
+    display: inline-block;
+    background-color: #0d6efd;
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    margin-left: 10px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Dispatch Selected Shipments</h1>
+  
+  {% if ids %}
+  <div class="affected-items">
+    <h3>📦 {{ids|length}} shipment(s) will be dispatched:</h3>
+    <ul>
+      {% for sid in id_list %}
+      <li>
+        Shipment ID: <code>{{ sid }}</code>
+        <span class="badge">WILL BE DISPATCHED</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="ids" value="{{ ids }}">
+    
+    <fieldset class="module aligned">
+      <div class="form-row">
+        <div>
+          <label for="id_carrier_tracking_number">Carrier Tracking Number:</label>
+          {{ form.carrier_tracking_number }}
+          {% if form.carrier_tracking_number.errors %}
+            <ul class="errorlist">
+              {% for error in form.carrier_tracking_number.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          <p class="help">Enter the carrier-assigned tracking/waybill number. Required for dispatch.</p>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="id_carrier">Carrier (optional):</label>
+          {{ form.carrier }}
+          {% if form.carrier.errors %}
+            <ul class="errorlist">
+              {% for error in form.carrier.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          <p class="help">Optionally override the carrier code (e.g., DHL, FedEx, UPS). Leave blank to use existing carrier.</p>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="submit-row">
+      <input type="submit" value="Dispatch Shipments" class="default button">
+      <a href="../" class="button">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

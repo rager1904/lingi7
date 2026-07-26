@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lingi7 — Production docker-compose overrides
+#
+# Use with:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Key differences from dev:
+#   - Uses the full runtime stage (collectstatic already run in image)
+#   - No bind mounts — code is baked into the image
+#   - restart: always — auto-recover from crashes
+#   - Gunicorn serves via command in Dockerfile CMD
+#   - Secrets sourced from environment, not .env files
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  db:
+    restart: always
+    # In production, prefer a managed PostgreSQL service (e.g. Supabase, RDS)
+    # and remove this service. Point DATABASE_URL at the managed instance.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  redis:
+    restart: always
+
+  web:
+    build:
+      target: runtime    # Full production image with collectstatic
+    restart: always
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 3
+      --worker-class sync
+      --timeout 60
+      --keepalive 5
+      --max-requests 1000
+      --max-requests-jitter 100
+      --log-level info
+      --access-logfile -
+      --error-logfile -
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    volumes: []            # No bind mounts in production
+    env_file: []           # No .env files in production — use secrets manager
+
+  celery:
+    build:
+      target: runtime
+    restart: always
+    command: celery -A config worker --loglevel=warning --concurrency=4 --queues=default,payments,notifications,fraud
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    volumes: []
+    env_file: []
+
+  beat:
+    build:
+      target: runtime
+    restart: always
+    command: celery -A config beat --loglevel=warning --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+    volumes: []
+    env_file: []

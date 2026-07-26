@@ -1,0 +1,86 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls static %}
+
+{% block title %}Reject KYC Submissions - Django Admin{% endblock %}
+
+{% block extrahead %}
+<style>
+  .affected-items {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    padding: 12px;
+  }
+  .affected-items h3 {
+    margin-top: 0;
+    color: #333;
+  }
+  .affected-items ul {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0 0;
+  }
+  .affected-items li {
+    padding: 6px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .affected-items li:last-child {
+    border-bottom: none;
+  }
+  .affected-items .badge {
+    display: inline-block;
+    background-color: #ffc107;
+    color: #000;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    margin-left: 10px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Reject KYC Submissions</h1>
+  
+  {% if ids %}
+  <div class="affected-items">
+    <h3>⚠️ {{ids|length}} user(s) will be affected:</h3>
+    <ul>
+      {% for uid in id_list %}
+      <li>
+        User ID: <code>{{ uid }}</code>
+        <span class="badge">PENDING KYC</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="ids" value="{{ ids }}">
+    
+    <fieldset class="module aligned">
+      <div class="form-row">
+        <div>
+          <label for="id_rejection_reason">Rejection Reason:</label>
+          {{ form.rejection_reason }}
+          {% if form.rejection_reason.errors %}
+            <ul class="errorlist">
+              {% for error in form.rejection_reason.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          <p class="help">Provide a detailed reason for rejection. This will be shown to the user in their dashboard.</p>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="submit-row">
+      <input type="submit" value="Reject KYC Submissions" class="default button">
+      <a href="../" class="button">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

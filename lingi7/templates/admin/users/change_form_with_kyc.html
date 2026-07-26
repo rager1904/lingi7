@@ -1,0 +1,124 @@
+{% extends "admin/change_form.html" %}
+{% load admin_urls static admin_modify i18n %}
+
+{% block title %}
+  {% if add %}Add User{% else %}Change User – KYC Review{% endif %} | {% trans 'Django site admin' %}
+{% endblock %}
+
+{% block extrahead %}
+<style>
+  .kyc-panel {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+  .kyc-panel h3 {
+    margin-top: 0;
+    color: #333;
+  }
+  .kyc-info-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .kyc-info-table td {
+    padding: 8px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .kyc-info-table td:first-child {
+    font-weight: bold;
+    width: 30%;
+  }
+  .kyc-info-table tr:last-child td {
+    border-bottom: none;
+  }
+  .status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .status-approved { background-color: #d4edda; color: #155724; }
+  .status-rejected { background-color: #f8d7da; color: #721c24; }
+  .status-pending { background-color: #fff3cd; color: #856404; }
+  .status-default { background-color: #e2e3e5; color: #383d41; }
+  .kyc-actions-panel {
+    background-color: #cfe2ff;
+    border: 1px solid #b6d4fe;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+  .kyc-actions-panel .button {
+    margin-right: 10px;
+    margin-bottom: 10px;
+  }
+  .kyc-actions-panel .button.approve {
+    background-color: #198754 !important;
+  }
+  .kyc-actions-panel .button.reject {
+    background-color: #dc3545 !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if original.kyc_status %}
+    <div class="kyc-panel">
+      <h3>📋 KYC Status Information</h3>
+      <table class="kyc-info-table">
+        <tr>
+          <td>Status:</td>
+          <td>
+            <span class="status-badge 
+              {% if original.kyc_status == 'APPROVED' %}status-approved
+              {% elif original.kyc_status == 'REJECTED' %}status-rejected
+              {% elif original.kyc_status == 'PENDING' %}status-pending
+              {% else %}status-default{% endif %}">
+              {{ original.get_kyc_status_display }}
+            </span>
+          </td>
+        </tr>
+        {% if original.kyc_submitted_at %}
+        <tr>
+          <td>Submitted:</td>
+          <td>{{ original.kyc_submitted_at|date:"Y-m-d H:i" }} UTC</td>
+        </tr>
+        {% endif %}
+        {% if original.kyc_reviewed_at %}
+        <tr>
+          <td>Reviewed:</td>
+          <td>{{ original.kyc_reviewed_at|date:"Y-m-d H:i" }} UTC</td>
+        </tr>
+        {% endif %}
+        {% if original.kyc_reviewed_by %}
+        <tr>
+          <td>Reviewed By:</td>
+          <td>{{ original.kyc_reviewed_by.get_full_name|default:original.kyc_reviewed_by }}</td>
+        </tr>
+        {% endif %}
+        {% if original.kyc_rejection_reason %}
+        <tr>
+          <td>Rejection Reason:</td>
+          <td><strong>{{ original.kyc_rejection_reason }}</strong></td>
+        </tr>
+        {% endif %}
+      </table>
+    </div>
+  {% endif %}
+
+  {% if original.kyc_status == 'PENDING' %}
+    <div class="kyc-actions-panel">
+      <h3>⚡ Quick KYC Actions</h3>
+      <p style="margin: 0 0 10px 0; color: #666;">This user's KYC submission is pending review. Choose an action:</p>
+      <a href="{% url 'admin:users_user_kyc_approve_single' original.id %}" class="button approve">✓ Approve KYC</a>
+      <a href="{% url 'admin:users_user_kyc_reject_single' original.id %}" class="button reject">✗ Reject KYC</a>
+    </div>
+  {% endif %}
+</div>
+
+{{ block.super }}
+{% endblock %}

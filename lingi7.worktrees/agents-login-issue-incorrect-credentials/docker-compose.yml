@@ -1,0 +1,160 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lingi7 — Local Development docker-compose
+#
+# Services:
+#   db        — PostgreSQL 15 (primary transactional DB)
+#   redis     — Redis 7 (Celery broker + session + rate limiting)
+#   web       — Django + Gunicorn (dev mode uses runserver via Makefile)
+#   celery    — Celery worker (processes async tasks)
+#   beat      — Celery Beat (scheduled tasks: reconciliation, polling)
+#
+# Usage:
+#   make up       — start all services
+#   make down     — stop all services
+#   make logs     — tail all logs
+#   make shell    — Django shell_plus
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL 15 ───────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: lingi7_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lingi7_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-lingi7}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lingi7_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Init scripts run once on first container creation
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lingi7} -d ${POSTGRES_DB:-lingi7_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lingi7_net
+
+  # ── Redis 7 ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: lingi7_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lingi7_net
+
+  # ── Django Web ──────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder        # Use builder stage in dev — no collectstatic
+    container_name: lingi7_web
+    restart: unless-stopped
+    command: >
+      sh -c "pip install --quiet -r requirements/dev.txt &&
+            python manage.py runserver 0.0.0.0:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-lingi7}:${POSTGRES_PASSWORD:-lingi7_dev_password}@db:5432/${POSTGRES_DB:-lingi7_dev}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    env_file:
+      - .env.dev
+    volumes:
+      - .:/app                           # Bind mount for hot reload
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lingi7_net
+
+  # ── Celery Worker ───────────────────────────────────────────────────────────
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: lingi7_celery
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info --concurrency=2 --queues=default,payments,notifications,fraud
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-lingi7}:${POSTGRES_PASSWORD:-lingi7_dev_password}@db:5432/${POSTGRES_DB:-lingi7_dev}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    env_file:
+      - .env.dev
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lingi7_net
+
+  # ── Celery Beat (Scheduler) ─────────────────────────────────────────────────
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: lingi7_beat
+    restart: unless-stopped
+    # django_celery_beat stores schedule in DB — prevents race conditions
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-lingi7}:${POSTGRES_PASSWORD:-lingi7_dev_password}@db:5432/${POSTGRES_DB:-lingi7_dev}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+    env_file:
+      - .env.dev
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks:
+      - lingi7_net
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  static_files:
+  media_files:
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  lingi7_net:
+    driver: bridge

@@ -29,16 +29,7 @@ def _table_exists(table_name: str) -> bool:
     """
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1 FROM information_schema.tables 
-                    WHERE table_name = %s
-                )
-                """,
-                [table_name],
-            )
-            return cursor.fetchone()[0]
+            return table_name in connection.introspection.table_names(cursor)
     except Exception:
         # If we can't check, assume table doesn't exist (during migrations)
         return False

@@ -101,7 +101,7 @@ import dj_database_url  # noqa: E402
 DATABASES = {
     "default": dj_database_url.config(
         env="DATABASE_URL",
-        default="postgres://lingi7:lingi7_dev_password@localhost:5432/lingi7_dev",
+        default="sqlite:///db.sqlite3",
         conn_max_age=600,           # Persistent connections — important for Gunicorn
         conn_health_checks=True,    # Check connection health before reuse
     )

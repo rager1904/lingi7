@@ -24,7 +24,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 from openai import OpenAI
-from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
+
+try:
+    from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
+    _MILVUS_AVAILABLE = True
+except ImportError:
+    Collection = CollectionSchema = DataType = FieldSchema = connections = utility = None
+    _MILVUS_AVAILABLE = False
 
 from backend.config import get_config
 from backend.policy import extract_text_from_pdf_bytes, summarize_policy_document

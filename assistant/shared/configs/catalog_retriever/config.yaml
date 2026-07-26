@@ -1,0 +1,10 @@
+text_embed_port: "http://embeddings:8000/v1"
+text_model_name: "BAAI/bge-small-en-v1.5"
+image_embed_port: "http://image-embeddings:8000/v1"
+image_model_name: "openai/clip-vit-base-patch32"
+db_port: "http://milvus:19530"
+db_name: "shopping_advisor_db"
+sim_threshold: 0.5
+text_collection: "shopping_advisor_text_db"
+image_collection: "shopping_advisor_image_db"
+data_source: "/app/shared/data/products_extended.csv"

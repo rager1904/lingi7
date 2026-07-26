@@ -1,0 +1,9 @@
+# Configuration override for local open-source endpoints.
+# This file is safe for CPU-only and self-hosted deployments.
+
+llm_port: "http://llm:8000/v1"
+llm_name: "llama3.2:3b"
+
+# Note: This override will be applied when CONFIG_OVERRIDE=config-build.yaml.
+# The base config.yaml will be loaded first, then these values will override
+# the corresponding fields in the base configuration.

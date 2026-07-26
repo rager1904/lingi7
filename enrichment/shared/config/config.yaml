@@ -1,0 +1,38 @@
+# Configuration file for catalog-enrichment endpoints
+# All models are open source and served locally. CPU defaults use Ollama.
+
+vlm:
+  url: "http://vlm:8000/v1"
+  model: "llava:7b"
+
+llm:
+  url: "http://llm-small:8000/v1"
+  model: "qwen2.5:3b"
+
+flux:
+  url: "http://flux:8000/v1/infer"
+
+trellis:
+  url: "http://trellis:8000/v1/infer"
+
+embeddings:
+  url: "http://embeddings:8000/v1"
+  model: "BAAI/bge-small-en-v1.5"
+
+milvus:
+  host: "milvus-standalone"
+  port: 19530
+  collection: "policy_chunks"
+  alias: "policy_library"
+
+policy_library:
+  storage_dir: "data/policies"
+  db_path: "data/policies/library.db"
+  top_k: 8
+  min_relevance_score: 0.3
+
+product_manual:
+  chunk_size_words: 250
+  chunk_overlap_words: 50
+  top_k_per_query: 3
+  min_relevance_score: 0.25

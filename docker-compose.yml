@@ -1,0 +1,585 @@
+# Unified Lingi7 Platform — docker-compose
+#
+# Combines three apps:
+#   1. Lingi7 Django (fintech/e-commerce core)
+#   2. Catalog Enrichment (VLM, image/3D generation)
+#   3. Shopping Assistant (LLM-powered multi-agent chatbot)
+#
+# All AI models are open source, served via vLLM / Ollama.
+#
+# Usage:
+#   docker compose up -d              # start everything
+#   docker compose logs -f            # tail all logs
+#   docker compose down -v            # stop + delete volumes
+#   docker compose up -d <service>    # start a single service
+#
+# Ports (only nginx exposed to host):
+#   :80   → nginx (unified reverse proxy)
+#   :8000 → Django dev (optional, for direct access)
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SHARED INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── PostgreSQL ────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: lingi7_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lingi7_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-lingi7}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./lingi7/infra/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lingi7} -d ${POSTGRES_DB:-lingi7_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lingi7-platform-net
+
+  # ── Redis ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: lingi7_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lingi7-platform-net
+
+  # ── etcd (Milvus metadata store) ─────────────────────────────────
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: [
+      "etcd",
+      "--advertise-client-urls=http://etcd:2379",
+      "--listen-client-urls=http://0.0.0.0:2379",
+      "--data-dir=/etcd"
+    ]
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - lingi7-platform-net
+
+  # ── Minio (Milvus object storage) ────────────────────────────────
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - lingi7-platform-net
+
+  # ── Milvus (vector database) ─────────────────────────────────────
+  milvus:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.4.13-hotfix
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: http://etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      COMMON_STORAGETYPE: local
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - lingi7-platform-net
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MODEL SERVING (OPEN SOURCE)
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── Model puller (runs once, then exits) ───────────────────────
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: lingi7-ollama-init
+    command: >
+      sh -c "ollama pull llama3.2:3b &&
+             ollama pull qwen2.5:3b &&
+             ollama pull llava:7b"
+    volumes:
+      - ollama_llm:/root/.ollama
+      - ollama_llm_small:/root/.ollama
+      - ollama_vlm:/root/.ollama
+    networks:
+      - lingi7-platform-net
+    restart: "no"
+
+  # ── Ollama: llama3.2:3b (Shopping Assistant LLM, CPU-friendly) ──
+  llm:
+    image: ollama/ollama:latest
+    container_name: lingi7-llm
+    environment:
+      - OLLAMA_HOST=0.0.0.0:8000
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=30m
+    volumes:
+      - ollama_llm:/root/.ollama
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+    networks:
+      - lingi7-platform-net
+
+  # ── Ollama: qwen2.5:3b (Catalog Enrichment LLM, CPU-friendly) ──
+  llm-small:
+    image: ollama/ollama:latest
+    container_name: lingi7-llm-small
+    environment:
+      - OLLAMA_HOST=0.0.0.0:8000
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=30m
+    volumes:
+      - ollama_llm_small:/root/.ollama
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    networks:
+      - lingi7-platform-net
+
+  # ── Ollama: llava:7b (VLM for enrichment, CPU-friendly) ─────────
+  vlm:
+    image: ollama/ollama:latest
+    container_name: lingi7-vlm
+    environment:
+      - OLLAMA_HOST=0.0.0.0:8000
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=30m
+    volumes:
+      - ollama_vlm:/root/.ollama
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    networks:
+      - lingi7-platform-net
+
+  # ── Ollama: llama3.2:3b (content safety guardrails) ─────────────
+  llama-guard:
+    image: ollama/ollama:latest
+    container_name: lingi7-llama-guard
+    environment:
+      - OLLAMA_HOST=0.0.0.0:8000
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=30m
+    volumes:
+      - ollama_guard:/root/.ollama
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    networks:
+      - lingi7-platform-net
+
+  # ── BGE text embeddings (HuggingFace transformers) ──────────────
+  # Serves BAAI/bge-large-en-v1.5 via custom FastAPI server.
+  embeddings:
+    image: bge-serve:latest
+    container_name: lingi7-embeddings
+    build:
+      context: .
+      dockerfile: docker/bge.Dockerfile
+    environment:
+      - BGE_MODEL_ID=${BGE_MODEL_ID:-BAAI/bge-small-en-v1.5}
+      - HF_TOKEN=${HF_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - lingi7-platform-net
+
+  # ── CLIP image embeddings (HuggingFace transformers) ────────────
+  # Serves openai/clip-vit-large-patch14 via custom FastAPI server.
+  image-embeddings:
+    image: clip-serve:latest
+    container_name: lingi7-image-embeddings
+    build:
+      context: .
+      dockerfile: docker/clip.Dockerfile
+    environment:
+      - CLIP_MODEL_ID=${CLIP_MODEL_ID:-openai/clip-vit-base-patch32}
+      - HF_TOKEN=${HF_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - lingi7-platform-net
+
+  # ── FLUX.1 image generation ─────────────────────────────────────
+  # Uses HuggingFace diffusers. Requires HF_TOKEN with FLUX license.
+  # Custom image builds from docker/flux.Dockerfile.
+  flux:
+    image: flux-serve:latest
+    container_name: lingi7-flux
+    build:
+      context: .
+      dockerfile: docker/flux.Dockerfile
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    networks:
+      - lingi7-platform-net
+
+  # ── TRELLIS 3D generation ───────────────────────────────────────
+  # Uses Microsoft/TRELLIS. Requires HF_TOKEN.
+  # Custom image builds from docker/trellis.Dockerfile.
+  trellis:
+    image: trellis-serve:latest
+    container_name: lingi7-trellis
+    build:
+      context: .
+      dockerfile: docker/trellis.Dockerfile
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    networks:
+      - lingi7-platform-net
+
+  # ═══════════════════════════════════════════════════════════════════
+  # APP 1: LINGI7 DJANGO (core fintech / e-commerce)
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── Django Web ──────────────────────────────────────────────────
+  lingi7-web:
+    build:
+      context: ./lingi7
+      dockerfile: Dockerfile
+      target: builder
+    container_name: lingi7_web
+    restart: unless-stopped
+    command: >
+      sh -c "pip install --quiet -r requirements/dev.txt &&
+            python manage.py runserver 0.0.0.0:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-lingi7}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-lingi7_dev}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
+      CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
+      ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
+    env_file:
+      - ./lingi7/.env.dev
+    volumes:
+      - ./lingi7:/app
+      - ./assistant/shared/data:/platform/assistant/shared/data
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lingi7-platform-net
+
+  # ── Celery Worker ───────────────────────────────────────────────
+  lingi7-celery:
+    build:
+      context: ./lingi7
+      dockerfile: Dockerfile
+      target: builder
+    container_name: lingi7_celery
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info --concurrency=2 --queues=default,payments,notifications,fraud
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-lingi7}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-lingi7_dev}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
+      CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
+      ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
+    env_file:
+      - ./lingi7/.env.dev
+    volumes:
+      - ./lingi7:/app
+      - ./assistant/shared/data:/platform/assistant/shared/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lingi7-platform-net
+
+  # ── Celery Beat ─────────────────────────────────────────────────
+  lingi7-beat:
+    build:
+      context: ./lingi7
+      dockerfile: Dockerfile
+      target: builder
+    container_name: lingi7_beat
+    restart: unless-stopped
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://${POSTGRES_USER:-lingi7}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-lingi7_dev}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
+      CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
+      ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
+    env_file:
+      - ./lingi7/.env.dev
+    volumes:
+      - ./lingi7:/app
+      - ./assistant/shared/data:/platform/assistant/shared/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lingi7-platform-net
+
+  # ═══════════════════════════════════════════════════════════════════
+  # APP 2: CATALOG ENRICHMENT
+  # ═══════════════════════════════════════════════════════════════════
+
+  enrichment-backend:
+    build:
+      context: ./enrichment
+      dockerfile: src/backend/Dockerfile
+    container_name: lingi7-enrichment-backend
+    environment:
+      - API_KEY=${API_KEY:?API_KEY is required}
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ./enrichment/data/outputs:/app/data/outputs
+      - ./enrichment/data/policies:/app/data/policies
+      - ./enrichment/shared/config:/app/shared/config:ro
+    depends_on:
+      vlm:
+        condition: service_healthy
+      llm-small:
+        condition: service_healthy
+      flux:
+        condition: service_started
+      trellis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - lingi7-platform-net
+
+  enrichment-frontend:
+    build:
+      context: ./enrichment/src/ui
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_LINGI7_API_BASE=/api/v1
+    container_name: lingi7-enrichment-frontend
+    environment:
+      - NEXT_PUBLIC_LINGI7_API_BASE=/api/v1
+    depends_on:
+      - enrichment-backend
+    networks:
+      - lingi7-platform-net
+
+  # ═══════════════════════════════════════════════════════════════════
+  # APP 3: SHOPPING ASSISTANT
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── Chain Server (multi-agent orchestrator) ─────────────────────
+  chain-server:
+    build:
+      context: ./assistant/chain_server
+    container_name: lingi7-chain-server
+    environment:
+      - API_KEY=${API_KEY:?API_KEY is required}
+      - SHARED_CONFIG_ROOT=/app/shared/configs
+    volumes:
+      - ./assistant/shared:/app/shared
+    depends_on:
+      - catalog-retriever
+      - memory-retriever
+      - rails
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8009/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - lingi7-platform-net
+
+  # ── Catalog Retriever (semantic product search) ─────────────────
+  catalog-retriever:
+    build:
+      context: ./assistant/catalog_retriever
+    container_name: lingi7-catalog-retriever
+    environment:
+      - API_KEY=${API_KEY:?API_KEY is required}
+      - SHARED_CONFIG_ROOT=/app/shared/configs
+    volumes:
+      - ./assistant/shared:/app/shared
+    depends_on:
+      milvus:
+        condition: service_healthy
+      embeddings:
+        condition: service_started
+      image-embeddings:
+        condition: service_started
+    networks:
+      - lingi7-platform-net
+
+  # ── Memory Retriever (user context + cart) ──────────────────────
+  memory-retriever:
+    build:
+      context: ./assistant/memory_retriever
+    container_name: lingi7-memory-retriever
+    volumes:
+      - memory_retriever_data:/app
+    networks:
+      - lingi7-platform-net
+
+  # ── Guardrails (content safety) ─────────────────────────────────
+  rails:
+    build:
+      context: ./assistant/guardrails
+    container_name: lingi7-guardrails
+    environment:
+      - API_KEY=${API_KEY:?API_KEY is required}
+      - GUARDRAILS_MODEL_URL=http://llama-guard:8000/v1
+      - GUARDRAILS_MODEL_NAME=llama3.2:3b
+      - SHARED_CONFIG_ROOT=/app/shared/configs
+    volumes:
+      - ./assistant/shared:/app/shared
+    depends_on:
+      llama-guard:
+        condition: service_healthy
+    networks:
+      - lingi7-platform-net
+
+  # ── Shopping Assistant Frontend ─────────────────────────────────
+  shopping-frontend:
+    build:
+      context: ./assistant/ui
+    container_name: lingi7-shopping-frontend
+    environment:
+      - REACT_APP_API_BASE_URL=/api/assistant
+    volumes:
+      - ./assistant/shared:/app/shared
+    depends_on:
+      - chain-server
+    networks:
+      - lingi7-platform-net
+
+  # ═══════════════════════════════════════════════════════════════════
+  # UNIFIED REVERSE PROXY
+  # ═══════════════════════════════════════════════════════════════════
+
+  nginx:
+    image: nginx:1.25.3-alpine
+    container_name: lingi7-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - lingi7-web
+      - enrichment-frontend
+      - chain-server
+      - shopping-frontend
+    networks:
+      - lingi7-platform-net
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# VOLUMES
+# ═══════════════════════════════════════════════════════════════════════
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_files:
+  media_files:
+  etcd_data:
+  minio_data:
+  milvus_data:
+  ollama_llm:
+  ollama_llm_small:
+  ollama_vlm:
+  ollama_guard:
+  memory_retriever_data:
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# NETWORKS
+# ═══════════════════════════════════════════════════════════════════════
+
+networks:
+  lingi7-platform-net:
+    name: lingi7-platform-net
+    driver: bridge

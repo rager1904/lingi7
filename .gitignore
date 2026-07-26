@@ -1,0 +1,13 @@
+.env
+.vite/
+.pnpm-store/
+node_modules/
+*.log
+*.log.*
+dist/
+__pycache__/
+*.pyc
+.env.local
+.env.*.local
+lingi7/
+lingi7.worktrees/

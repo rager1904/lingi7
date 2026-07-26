@@ -1,0 +1,336 @@
+# Product Requirements Document (PRD)
+
+## Project: Catalog Enrichment System
+
+**Version:** 1.4.0
+**Last Updated:** 24-Jul-2026  
+**Owner:** Open Source Community
+
+## Problem Statement
+
+Product catalogs often contain minimal, low-quality information with basic product images and sparse descriptions. This limits customer engagement, search discoverability, and overall user experience. Manual enrichment of catalog data is time-consuming, error-prone, and doesn't scale. Human categorization and tagging of products is particularly susceptible to inconsistencies, subjective interpretations, and classification errors that can negatively impact search functionality and user experience.
+
+Additionally, product catalogs quickly become outdated as market trends, customer preferences, and styling conventions evolve. Catalog managers lack visibility into how customers are actually using products in real-world contexts, what terminology resonates with target audiences, and what trends are emerging on social media platforms. This disconnect between catalog content and market reality leads to missed opportunities for engagement and conversion.
+
+## Solution Overview
+
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips. The system leverages social media content analysis to incorporate trending styles, real-world usage patterns, and customer sentiment into product enrichment, ensuring catalog data stays current with market trends.
+
+## Core User Flow
+
+1. **Input**: User submits product image along with existing product JSON data and optional locale specification
+2. **Social Media Analysis** (Optional): System retrieves and analyzes social media content for similar products to extract:
+   - Trending styles and terminology
+   - Real-world usage scenarios and contexts
+   - Customer sentiment and common feedback
+   - Popular color combinations and styling preferences
+   - Complementary products and accessories
+3. **Content Augmentation**: System uses Qwen2-VL vision-language model to enhance existing product data by:
+   - Enriching product title with more descriptive details (localized to target region)
+   - Expanding product description with richer, more verbose content (using regional terminology)
+   - Improving and refining attributes (e.g., expanding "Black" to "Matte Black with Silver Hardware")
+   - Enhancing categories and subcategories based on visual analysis
+   - Generating more comprehensive and accurate tags
+   - Validating and correcting product specifications against visual evidence
+   - Incorporating trending terminology and insights from social media analysis (when available)
+4. **Cultural Prompt Planning**: System uses LLaMA 3.1 LLM to create culturally-aware prompts for image generation based on:
+   - Product analysis
+   - Target locale/country cultural context
+   - Regional aesthetic preferences
+   - Social media trend insights (when available)
+5. **Localized Image Generation**: System creates variation images using FLUX models with culturally-appropriate backgrounds
+6. **Quality Assessment**: System evaluates generated images using VLM-based reflection to verify:
+   - Product consistency and fidelity
+   - Size and scale proportions
+   - Anatomical accuracy (if applicable)
+   - Background quality and realism
+7. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
+8. **Video Generation**: System produces 3-5 second product video clips using open-source models
+9. **Output**: Culturally-enriched catalog entry with quality-assessed generated assets optimized for target market, enhanced with social media insights
+
+## Functional Requirements
+
+### FR-1: Image Input Processing
+- Accept single or multiple product images (JPEG, PNG formats)
+- Support common image resolutions and file sizes
+- Validate image quality and content relevance
+
+### FR-2: VLM Content Augmentation
+- Integrate with Qwen2-VL vision-language model via Ollama
+- Accept existing product JSON data alongside product images
+- Analyze visual product features and compare with existing data
+- Augment and enrich existing titles with more descriptive, compelling content
+- Expand existing descriptions with richer, more detailed information
+- Enhance product attributes with visual insights (colors, materials, style details)
+- Refine and improve categories, subcategories, and tags
+- Validate specifications against visual evidence
+- Preserve structured data format including specs, attributes, and metadata
+
+### FR-3: 2D Image Variation Generation
+- Use LLaMA 3.1 LLM to plan and generate optimized prompts for image variations
+- Use FLUX models to create product variations based on generated prompts
+- Generate multiple angle views
+- Create lifestyle/contextual images
+- Maintain product accuracy and consistency
+
+### FR-4: 3D Asset Generation
+- Integrate Microsoft TRELLIS model
+- Generate 3D models from 2D product images
+- Export 3D assets in standard formats
+- Ensure model quality and accuracy
+
+### FR-5: Video Clip Generation
+- Create 3-5 second product video clips
+- Use open-source video generation models
+- Generate smooth, professional-quality clips
+- Support common video formats (MP4, WebM)
+
+### FR-6: Multi-Language & Cultural Localization
+- Support multiple output languages including English, Spanish, and French across 10 regional locales
+- Generate product titles, descriptions, categories, and tags in selected regional language variant
+- Maintain language consistency across all text outputs using regional terminology (e.g., "ordenador" vs "computadora")
+- Generate culturally-appropriate product backgrounds reflecting regional aesthetics and lifestyle contexts
+- Adapt image generation prompts to include cultural elements specific to target country/region
+
+### FR-7: Social Media Content Integration
+- Extract trending styles, real-world usage patterns, and customer reviews from social media platforms for similar products
+- Analyze visual and video content from social media sources (TikTok, YouTube, Instagram, etc.)
+- Identify product usage contexts, styling trends, and customer sentiment from user-generated content
+- Integrate social media insights into catalog enrichment to enhance product descriptions and tags with trending terminology
+- Support both API-based and MCP-based integration patterns for social media data retrieval
+- Extract key visual elements from social media content:
+  - Popular color combinations and styling preferences
+  - Real-world product usage scenarios and contexts
+  - Complementary products frequently shown together
+  - Seasonal trends and emerging fashion/lifestyle patterns
+- Aggregate customer sentiment and common feedback themes from social media reviews and comments
+- Identify trending hashtags, keywords, and product descriptors relevant to similar products
+- Maintain compliance with platform terms of service and data privacy regulations
+- Support both real-time monitoring and periodic batch analysis modes
+
+### FR-8: Brand Voice & Taxonomy Customization
+- Accept custom brand instructions to guide content enrichment and generation
+- Support brand-specific voice, tone, and writing style preferences
+- Apply custom taxonomy and categorization guidelines consistent with brand standards
+- Incorporate brand-specific terminology, keywords, and messaging preferences
+- Enable brands to define product classification rules and hierarchies
+- Maintain consistency across all enriched content (titles, descriptions, tags, categories)
+- Allow optional brand instructions parameter alongside product data and images
+
+### FR-9: Automated Quality Assessment for Generated Images
+- Integrate VLM-based reflection module to evaluate generated image variations
+- Compare generated images against original product photos for quality control
+- Evaluate product consistency (colors, materials, textures, reflective properties)
+- Assess size and scale proportions (product must appear realistic in new context)
+- Verify anatomical accuracy (hands must have correct finger count and natural proportions)
+- Validate background quality (photorealism, appropriate context, technical correctness)
+- Generate quality score (0-100 scale) with strict evaluation criteria
+- Provide detailed list of detected quality issues for developer feedback
+- Support automated filtering or flagging of low-quality generated images
+- Ensure background differences from original are not penalized (backgrounds should differ)
+
+### FR-10: Product FAQ Generation
+- Generate 3-5 frequently asked questions and answers for each product from enriched catalog data
+- FAQs are derived from the final enriched catalog data (after VLM analysis, user data merge, and branding)
+- Questions cover practical shopper topics: materials, care instructions, sizing, use cases, compatibility, durability
+- Answers are concise (1-3 sentences), factual, and grounded in the enriched product data
+- Support locale-aware FAQ generation across all 10 supported regional locales
+- Separate `/vlm/faqs` endpoint allows asynchronous generation — details display immediately while FAQs load in the background
+- UI displays FAQs in a dedicated tab with collapsible accordion items
+
+### FR-12: Product Manual PDF Enhancement for FAQs
+- Accept an optional product manual PDF to enrich FAQ generation with detailed product knowledge
+- Stateless architecture: `/vlm/manual/extract` processes the PDF, returns structured knowledge as JSON, and frees all server-side resources — no server-side storage required
+- Dynamic query generation: LLM generates 5-8 product-type-specific questions based on title and categories (not description) to avoid FAQ duplication with the description
+- Targeted RAG retrieval: text is chunked, embedded in-memory using BGE-small-en-v1.5, and relevant chunks retrieved per query via cosine similarity
+- When manual knowledge is provided to `/vlm/faqs`, generate up to 10 richer FAQs that surface details from the manual that go beyond the description
+- FAQ prompt explicitly avoids duplicating information already in the description
+- Supports concurrent processing: each request is independent with no shared server state, enabling batch processing of many products in parallel
+- UI provides a "Product manual for FAQs" upload section under Advanced Options
+- PDF file size limit: 50 MB; embedding requests batched at 128 chunks per call
+
+### FR-11: Policy Compliance Checking
+- Accept PDF policy documents through a persistent policy library (`/policies` endpoint)
+- Parse and normalize uploaded PDFs into structured policy summaries
+- Embed normalized policy records using BGE-small-en-v1.5 embeddings and store in Milvus vector database
+- During product analysis, perform semantic retrieval of relevant policy records
+- Run compliance classification against enriched product data and retrieved policy records
+- Return pass/fail status with matched policies, rule details, reasons, evidence, and warnings
+- Support deduplication of repeated policy uploads by content hash
+- Display compliance results in the UI with visual pass/fail indicators
+
+### FR-13: Protocol Schema Export (ACP & UCP)
+- Generate ACP (Agentic Commerce Protocol) and UCP (Unified Commerce Protocol) schema instances from enriched product data
+- Use LLM to extract structured attributes (brand, material, age_group, gender, product_details, product_highlights, short_title, google_product_category) from enriched title and description
+- Merge LLM-extracted fields with enriched data and deterministic defaults (availability, condition, adult, is_bundle) into full schema templates
+- ACP schema covers product, pricing, FAQs, agent actions, fulfillment, campaigns, certifications, energy efficiency, bundling, marketplace, and metadata
+- UCP schema follows Google Merchant Center Product Data Specification across all 9 sections (basic product data, price/availability, product category, identifiers, detailed description, shopping campaigns, marketplaces, destinations, shipping/returns)
+- UCP uses `structured_title` and `structured_description` with `digital_source_type: "trained_algorithmic_media"` for AI-generated content
+- Single `/protocols/generate` endpoint calls LLM once and returns both schemas
+- UI displays schemas in a Protocols tab with ACP/UCP sub-tabs, syntax-highlighted JSON, and copy-to-clipboard
+- Schema generation fires in the background after FAQ generation completes, ensuring FAQs are included in both schemas
+
+## Technical Requirements
+
+### TR-1: Model Integration
+- Qwen2-VL vision-language model integration via Ollama with locale-aware prompting
+- LLaMA 3.1 LLM integration via Ollama for culturally-aware prompt planning
+- FLUX model deployment for localized image generation
+- Microsoft TRELLIS model integration
+- Open-source video generation model setup
+- BGE-small-en-v1.5 embeddings for policy compliance and manual RAG
+
+### TR-2: Infrastructure
+- GPU-enabled compute resources for model inference (recommended for Qwen2-VL and LLaMA 3.1; required for FLUX and TRELLIS)
+- Scalable storage for generated assets
+- Queue management for batch processing
+- API endpoints for system interaction
+
+### TR-3: Performance
+- Process single product within 1 minute
+- Support concurrent processing of multiple products
+- Maintain >95% model inference success rate
+
+### TR-4: Data Management
+- Secure storage of uploaded images
+- Organized asset storage structure
+- Metadata tracking and versioning
+- Cleanup policies for temporary files
+
+### TR-5: Social Media Integration
+- API integration with social media platforms (TikTok, YouTube, Instagram, Pinterest)
+- Support for MCP (Model Context Protocol) based data retrieval
+- Web scraping infrastructure for platforms without API access
+- Rate limiting and quota management for API calls
+- Content deduplication and similarity detection across social media sources
+- Video analysis pipeline for extracting frames and analyzing video content
+- Natural language processing for sentiment analysis and review extraction
+- Trend detection algorithms for identifying emerging patterns
+- Data caching and refresh strategies for social media content
+- Privacy compliance framework (GDPR, CCPA) for user-generated content
+- Content filtering to exclude inappropriate or irrelevant material
+
+## User Stories
+
+### US-1: Basic Product Enrichment
+**As a** catalog manager  
+**I want to** upload a product image along with existing product data and receive AI-enhanced catalog data  
+**So that** I can augment and improve my existing catalog entries with richer, more accurate information
+
+### US-1a: Localized Product Augmentation
+**As a** international catalog manager  
+**I want to** upload a product image with existing product data and a target locale to receive culturally-appropriate enhanced catalog data  
+**So that** I can improve my existing product listings with region-specific, culturally-relevant content that resonates with local customers
+
+### US-2: Batch Processing
+**As a** catalog manager  
+**I want to** process multiple products simultaneously  
+**So that** I can efficiently enrich large catalog datasets
+
+### US-3: Asset Generation
+**As a** marketing team member  
+**I want to** receive multiple image variations and video content  
+**So that** I can use diverse assets across different marketing channels
+
+### US-3a: Cultural Asset Generation
+**As a** international marketing team member  
+**I want to** receive culturally-localized image variations that reflect regional aesthetics  
+**So that** I can create marketing campaigns that feel authentic and familiar to local audiences
+
+### US-4: 3D Visualization
+**As a** e-commerce platform  
+**I want to** display 3D product models  
+**So that** customers can interact with products before purchase
+
+### US-5: Trend-Informed Product Enrichment
+**As a** catalog manager  
+**I want to** enrich my product descriptions with trending styles and terminology from social media  
+**So that** my catalog stays current with market trends and uses language that resonates with customers
+
+### US-5a: Social Media Sentiment Analysis
+**As a** product manager  
+**I want to** understand customer sentiment and common feedback about similar products from social media reviews  
+**So that** I can improve product descriptions by addressing common questions and highlighting popular features
+
+### US-5b: Real-World Usage Context
+**As a** marketing team member  
+**I want to** see how customers are actually using and styling similar products in real-world scenarios from social media  
+**So that** I can create more authentic and relatable marketing content and product imagery
+
+### US-5c: Competitive Intelligence
+**As a** merchandising manager  
+**I want to** identify trending color combinations, styling preferences, and complementary products from social media analysis  
+**So that** I can optimize product assortments and create effective cross-selling opportunities
+
+### US-6: Brand-Consistent Enrichment
+**As a** brand manager  
+**I want to** provide custom brand voice, tone, and taxonomy guidelines to the enrichment system  
+**So that** all generated product content maintains consistency with my brand identity and uses our preferred terminology and classification standards
+
+### US-7: Automated Quality Control
+**As a** catalog operations manager  
+**I want to** receive automated quality assessments with detailed scoring and issue detection for generated product images  
+**So that** I can quickly identify and filter out low-quality variations without manual review, ensuring only high-quality assets enter my catalog
+
+### US-8: Product FAQ Generation
+**As a** e-commerce content manager  
+**I want to** automatically generate frequently asked questions and answers for each product based on its enriched catalog data  
+**So that** I can populate product FAQ sections without manual copywriting, improving the customer shopping experience
+
+### US-9: Policy Compliance Checking
+**As a** catalog compliance officer  
+**I want to** upload policy PDFs and have the system automatically check enriched product listings against those policies  
+**So that** I can ensure all catalog entries comply with marketplace regulations and internal guidelines before publishing
+
+### US-10: Manual-Enhanced Product FAQs
+**As a** e-commerce content manager  
+**I want to** upload a product manual PDF and have the system generate richer FAQs that include specific details like specs, care instructions, safety warnings, and warranty information  
+**So that** my product FAQ sections provide genuine value beyond what the description already covers, reducing customer support inquiries
+
+## Success Criteria
+
+- **Processing Time**: <1 minute per product for complete enrichment (including quality assessment)
+- **Content Quality**: Generated descriptions and titles achieve >90% relevance rating in target locale
+- **Cultural Accuracy**: Generated backgrounds and contexts achieve >85% cultural appropriateness rating from regional reviewers
+- **Asset Generation**: Successfully generate 2D variations, 3D models, and video clips for >95% of input products
+- **Quality Assessment Accuracy**: Automated quality scores correlate >85% with human expert evaluations
+- **Quality Detection**: System identifies >90% of major quality issues (scale problems, anatomical errors, material inconsistencies)
+- **Localization Coverage**: Support 10 regional locales across English, Spanish, and French
+- **System Reliability**: 99% uptime for processing requests
+- **User Satisfaction**: Positive feedback on generated content quality and cultural authenticity
+- **Social Media Integration Accuracy**: Extracted trends and sentiment achieve >85% relevance to target product category
+- **Trend Freshness**: Social media insights refreshed within 24-48 hours of platform posting
+- **Content Diversity**: Aggregate insights from minimum of 50+ relevant social media posts per product category
+
+## Implementation TODOs
+
+- [x] ~~FR-1: Image Input Processing~~
+- [x] ~~FR-2: VLM Content Extraction~~
+- [x] ~~FR-3: 2D Image Variation Generation~~
+- [x] ~~FR-4: 3D Asset Generation~~ *(Backend endpoint complete, UI integration pending)*
+- [ ] FR-5: Video Clip Generation
+- [x] ~~FR-6: Multi-Language & Cultural Localization~~ *(Complete with 10 regional locales and cultural image generation)*
+- [ ] FR-7: Social Media Content Integration
+- [x] ~~FR-8: Brand Voice & Taxonomy Customization~~ *(Complete with brand_instructions parameter support)*
+- [x] ~~FR-9: Automated Quality Assessment for Generated Images~~ *(VLM-based reflection module integrated into image generation pipeline)*
+- [x] ~~FR-10: Product FAQ Generation~~ *(Separate /vlm/faqs endpoint with async loading, Kaizen Tabs + Accordion UI)*
+- [x] ~~FR-11: Policy Compliance Checking~~ *(PDF policy library with Milvus embeddings, semantic retrieval, compliance classification)*
+- [x] ~~FR-12: Product Manual PDF Enhancement for FAQs~~ *(Stateless targeted RAG via /vlm/manual/extract, dynamic query generation, up to 10 manual-enriched FAQs)*
+- [x] ~~FR-13: Protocol Schema Export (ACP & UCP)~~ *(Single /protocols/generate endpoint with LLM field extraction, syntax-highlighted UI with ACP/UCP sub-tabs)*
+
+- [ ] TR-1: Model Integration
+  - [x] ~~Qwen2-VL vision-language model integration~~
+  - [x] ~~LLaMA 3.1 LLM integration for prompt planning~~
+  - [x] ~~FLUX model deployment~~
+  - [x] ~~Microsoft TRELLIS model integration~~ *(Backend API integration complete)*
+  - [ ] Open-source video generation model setup
+- [ ] TR-2: Infrastructure
+- [ ] TR-3: Performance
+- [ ] TR-4: Data Management
+- [ ] TR-5: Social Media Integration
+  - [ ] API integration setup (TikTok, YouTube, Instagram, Pinterest)
+  - [ ] MCP-based integration implementation
+  - [ ] Video content analysis pipeline
+  - [ ] Sentiment analysis and NLP processing
+  - [ ] Trend detection algorithms
+  - [ ] Privacy compliance framework

@@ -1,0 +1,107 @@
+services:
+  nginx:
+    image: nginx:1.25.3-alpine
+    container_name: catalog-enrichment-nginx
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    container_name: catalog-enrichment-backend
+    environment:
+      - API_KEY=${API_KEY:-ollama}
+      - LLM_API_KEY=${LLM_API_KEY:-ollama}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - MILVUS_HOST=${MILVUS_HOST:-milvus-standalone}
+      - MILVUS_PORT=${MILVUS_PORT:-19530}
+    volumes:
+      - ./data/outputs:/app/data/outputs
+      - ./data/policies:/app/data/policies
+      - ./shared/config:/app/shared/config:ro
+    depends_on:
+      - llm-small
+      - vlm
+      - embeddings
+    restart: unless-stopped
+    networks:
+      - catalog-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./src/ui
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_LINGI7_API_BASE=${NEXT_PUBLIC_LINGI7_API_BASE:-http://localhost:8000/api/v1}
+    container_name: catalog-enrichment-frontend
+    environment:
+      - NEXT_PUBLIC_LINGI7_API_BASE=${NEXT_PUBLIC_LINGI7_API_BASE:-http://localhost:8000/api/v1}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
+  llm-small:
+    image: ollama/ollama:latest
+    container_name: catalog-enrichment-llm
+    environment:
+      - OLLAMA_HOST=0.0.0.0:8000
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=30m
+    volumes:
+      - ollama_llm_small:/root/.ollama
+    command: serve
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
+  vlm:
+    image: ollama/ollama:latest
+    container_name: catalog-enrichment-vlm
+    environment:
+      - OLLAMA_HOST=0.0.0.0:8000
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=30m
+    volumes:
+      - ollama_vlm:/root/.ollama
+    command: serve
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
+  embeddings:
+    image: bge-serve:latest
+    container_name: catalog-enrichment-embeddings
+    build:
+      context: ..
+      dockerfile: docker/bge.Dockerfile
+    environment:
+      - BGE_MODEL_ID=${BGE_MODEL_ID:-BAAI/bge-small-en-v1.5}
+      - HF_TOKEN=${HF_TOKEN:-}
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
+networks:
+  catalog-network:
+    name: catalog-network
+
+volumes:
+  ollama_llm_small:
+  ollama_vlm:

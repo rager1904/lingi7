@@ -1,0 +1,10 @@
+models:
+  - type: content_safety
+    parameters:
+      base_url: http://llama-guard:8000/v1
+      model: llama3.2:3b
+
+  - type: topic_control
+    parameters:
+      base_url: http://llama-guard:8000/v1
+      model: llama3.2:3b

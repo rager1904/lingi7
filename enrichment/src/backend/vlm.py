@@ -1,0 +1,709 @@
+# VLM analysis for product image understanding.
+
+import os
+import json
+import base64
+import logging
+from typing import Optional, Dict, Any
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from backend.config import get_config
+from backend.utils import parse_llm_json
+
+load_dotenv()
+
+logger = logging.getLogger("catalog_enrichment.vlm")
+
+LOCALE_CONFIG = {
+    "en-US": {"language": "English", "region": "United States", "country": "United States", "context": "American English with US terminology (e.g., 'cell phone', 'sweater')"},
+    "en-GB": {"language": "English", "region": "United Kingdom", "country": "United Kingdom", "context": "British English with UK terminology (e.g., 'mobile phone', 'jumper')"},
+    "en-AU": {"language": "English", "region": "Australia", "country": "Australia", "context": "Australian English with local terminology"},
+    "en-CA": {"language": "English", "region": "Canada", "country": "Canada", "context": "Canadian English"},
+    "es-ES": {"language": "Spanish", "region": "Spain", "country": "Spain", "context": "Peninsular Spanish with Spain-specific terminology (e.g., 'ordenador' for computer)"},
+    "es-MX": {"language": "Spanish", "region": "Mexico", "country": "Mexico", "context": "Mexican Spanish with Latin American terminology (e.g., 'computadora' for computer)"},
+    "es-AR": {"language": "Spanish", "region": "Argentina", "country": "Argentina", "context": "Argentinian Spanish with local expressions"},
+    "es-CO": {"language": "Spanish", "region": "Colombia", "country": "Colombia", "context": "Colombian Spanish"},
+    "fr-FR": {"language": "French", "region": "France", "country": "France", "context": "Metropolitan French"},
+    "fr-CA": {"language": "French", "region": "Canada", "country": "Canada", "context": "Quebec French with Canadian terminology"}
+}
+
+# Error messages
+API_KEY_NOT_SET_ERROR = "API_KEY is not set"
+
+# Allowed product categories for classification
+PRODUCT_CATEGORIES = [
+    "clothing",
+    "footwear",
+    "kitchen", 
+    "accessories",
+    "toys",
+    "electronics",
+    "furniture",
+    "office",
+    "fragrance",
+    "skincare",
+    "bags",
+    "outdoor"
+]
+
+def _call_llm_filter_user_data(
+    vlm_output: Dict[str, Any],
+    product_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Pre-filter: Remove irrelevant terms from user-provided product data before merging.
+
+    Uses a focused, low-temperature LLM call to classify each user-provided term
+    as relevant or irrelevant based on the VLM visual analysis (ground truth).
+    Returns a cleaned copy of product_data with only relevant terms preserved.
+    """
+    logger.info("[Pre-filter] Starting relevance filter: vlm_keys=%s, product_keys=%s",
+                list(vlm_output.keys()), list(product_data.keys()))
+
+    api_key = os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))
+    if not api_key:
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    vlm_json = json.dumps(vlm_output, indent=2, ensure_ascii=False)
+    product_json = json.dumps(product_data, indent=2, ensure_ascii=False)
+    vlm_categories = json.dumps(vlm_output.get("categories", []))
+
+    prompt = f"""You are a product data validator. Decide if the user-provided text is about the SAME type of product shown in the visual analysis, or about a COMPLETELY DIFFERENT product.
+
+VISUAL ANALYSIS (what the camera shows):
+{vlm_json}
+
+PRODUCT CATEGORY: {vlm_categories}
+
+USER-PROVIDED PRODUCT DATA:
+{product_json}
+
+TASK: For each text field in the user-provided data, answer ONE question: "Is this text about a completely different type of product than what the image shows?"
+- If YES (completely different product type, e.g. "laptop" on a shoe image, or "yoga mat" on a blender image) → set that field to an empty string.
+- If NO (same product, related, or even partially relevant) → keep the ENTIRE field exactly as the user provided it. Do NOT modify, rephrase, or remove individual words.
+
+This is a binary decision per field — keep it all or clear it all. Never partially edit the user's text.
+For non-text fields (price, SKU, numeric values): always keep unchanged.
+
+Return ONLY valid JSON with the same structure as the user-provided data. No markdown, no comments."""
+
+    logger.info("[Pre-filter] Sending filter prompt to LLM (length: %d chars)", len(prompt))
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": ""}, {"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
+    logger.info("[Pre-filter] LLM response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if parsed is not None:
+        logger.info("[Pre-filter] Filter successful: filtered_keys=%s, title_before=%s, title_after=%s",
+                    list(parsed.keys()),
+                    repr(product_data.get("title", "")),
+                    repr(parsed.get("title", "")))
+        return parsed
+    logger.warning("[Pre-filter] JSON parse failed, using original product data")
+    return product_data
+
+
+def _call_llm_enhance_vlm(
+    vlm_output: Dict[str, Any],
+    product_data: Optional[Dict[str, Any]] = None,
+    locale: str = "en-US"
+) -> Dict[str, Any]:
+    """
+    Step 1: Enhance VLM output with compelling copywriting, merge with product data, and localize.
+
+    Receives pre-filtered product_data (irrelevant terms already removed by the
+    pre-filter step) and merges it with VLM output into compelling e-commerce copy.
+    Includes anti-hallucination rules to prevent fabricating specs not in the input.
+    Localizes content to target language/region.
+    """
+    logger.info("[Step 1] LLM enhance + localize: vlm_keys=%s, product_keys=%s, locale=%s", 
+                list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale)
+    
+    if not (api_key := os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))):
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    vlm_json = json.dumps(vlm_output, indent=2, ensure_ascii=False)
+
+    existing_title = product_data.get("title", "") if product_data else ""
+    existing_desc = product_data.get("description", "") if product_data else ""
+
+    title_instruction = (
+        f'The user provided this title: "{existing_title}". Use it as the BASE and enrich it with visual details (color, shape, design) from the analysis. Keep all user words unless printed label text on the product clearly contradicts them.'
+        if existing_title else "Create a compelling product name."
+    )
+    desc_instruction = (
+        f'The user provided this description: "{existing_desc}". Use it as the BASE and expand it with visual details from the analysis. Keep all user terms unless printed label text on the product clearly contradicts them.'
+        if existing_desc else "Focus on what makes this product appealing."
+    )
+
+    product_section = f"\nEXISTING PRODUCT DATA:\n{json.dumps(product_data, indent=2, ensure_ascii=False)}\n" if product_data else ""
+
+    prompt = f"""You are a product catalog copywriter. Enhance the content below into compelling e-commerce copy in {info['language']} for {info['region']} ({info['context']}).
+
+VISUAL ANALYSIS (what the camera sees):
+{vlm_json}
+{product_section}
+ALLOWED CATEGORIES: {json.dumps(PRODUCT_CATEGORIES)}
+
+STRICT RULES:
+1. NEVER invent or fabricate details on your own. Only use facts from the VISUAL ANALYSIS or the EXISTING PRODUCT DATA above.
+2. Printed text readable on the product (brand names, product names, dosages, model numbers) is ground truth. Drop user words that contradict printed label text.
+3. Material descriptions from the visual analysis are visual guesses — the camera cannot verify composition. Always use the user's material term when provided.
+4. The VISUAL ANALYSIS is authoritative for appearance (colors, shape, design) and printed text. The EXISTING PRODUCT DATA is authoritative for material composition and internal specs.
+
+YOUR TASK:
+- title: {title_instruction} Write in {info['language']}.
+- description: Write a rich, persuasive product description. Merge visual details with user-provided information. {desc_instruction} Write in {info['language']}.
+- categories: Pick from allowed list only. English. Array format.
+- tags: {"Keep all existing user tags AND add more from the visual analysis." if product_data else "Generate 10 relevant search tags."} English.
+- colors: Use the VLM colors. English.
+{f"Keep any other fields from the existing data (price, SKU, etc.) unchanged." if product_data else ""}
+
+Return ONLY valid JSON. No markdown, no comments."""
+
+    logger.info("[Step 1] Sending prompt to LLM (length: %d chars)", len(prompt))
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
+    logger.info("[Step 1] LLM response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if parsed is not None:
+        logger.info("[Step 1] Enhancement successful: enhanced_keys=%s", list(parsed.keys()))
+        return parsed
+    logger.warning("[Step 1] JSON parse failed, using VLM output")
+    return vlm_output
+
+
+def _call_llm_apply_branding(
+    enhanced_content: Dict[str, Any],
+    brand_instructions: str,
+    locale: str = "en-US"
+) -> Dict[str, Any]:
+    """
+    Step 2: Apply brand voice, tone, and taxonomy to already-enhanced content.
+    
+    This function focuses purely on brand alignment:
+    - Takes Step 1's enhanced content as input
+    - Applies brand-specific voice, tone, and style
+    - Applies brand taxonomy and terminology
+    - Preserves content quality from Step 1
+    """
+    logger.info("[Step 2] LLM brand application: content_keys=%s, locale=%s", 
+                list(enhanced_content.keys()), locale)
+    
+    if not (api_key := os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))):
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    content_json = json.dumps(enhanced_content, indent=2, ensure_ascii=False)
+
+    prompt = f"""You are a brand compliance specialist. Apply the following brand-specific instructions to enhance product catalog content.
+
+BRAND INSTRUCTIONS:
+{brand_instructions}
+
+ENHANCED PRODUCT CONTENT (already well-written, needs brand alignment):
+{content_json}
+
+ALLOWED CATEGORIES (must use one or more from this list):
+{json.dumps(PRODUCT_CATEGORIES)}
+
+{'═' * 80}
+CRITICAL RULES:
+{'═' * 80}
+
+1. **Maintain Exact JSON Structure**:
+   - Return the EXACT SAME JSON keys/fields as the enhanced content above
+   - DO NOT add new fields or keys to the JSON
+   - DO NOT remove existing fields
+   - Only modify the VALUES of existing fields
+
+2. **Description Field Formatting**:
+   - Follow the brand instructions for format and structure — if they ask for paragraphs, write paragraphs; if they ask for sections or bullet points, use sections and bullet points
+   - Keep everything in the description field as a single string value
+   - Separate sections or paragraphs with double newlines (\\n\\n) for readability
+
+3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
+   - Apply brand voice/tone to title, description, categories, and tags
+   - Use brand-preferred terminology and expressions
+   - Do NOT add ingredients, specifications, or features not present in the enhanced content above. Only rephrase and style what is already there
+
+4. **Categories**:
+   - Validate against the allowed categories list above
+   - Apply brand taxonomy preferences if specified
+   - Keep in English
+
+5. **Tags** (CRITICAL - Preserve User Input):
+   - MUST preserve all user-provided tags from the input (do not remove them)
+   - ADD brand-preferred terminology and descriptors alongside user tags
+   - Keep in English
+
+6. **Preserve All Other Fields**:
+   - If enhanced content has fields like price, SKU, colors, specs - preserve them exactly
+   - Only modify: title, description, categories, tags
+
+{'═' * 80}
+OUTPUT FORMAT:
+{'═' * 80}
+Return valid JSON with the EXACT SAME structure as the enhanced content input.
+Apply brand instructions by modifying the VALUES of existing fields, not by adding new fields.
+
+Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */)."""
+
+    logger.info("[Step 2] Sending prompt to LLM (length: %d chars)", len(prompt))
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
+    logger.info("[Step 2] LLM response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if parsed is not None:
+        logger.info("[Step 2] Brand alignment successful: keys=%s", list(parsed.keys()))
+        return parsed
+    logger.warning("[Step 2] JSON parse failed, returning Step 1 content unchanged")
+    return enhanced_content
+
+
+def _format_manual_knowledge(knowledge: Dict[str, str]) -> str:
+    """Format extracted manual knowledge into a prompt section."""
+    lines = ["PRODUCT MANUAL KNOWLEDGE:",
+             "The following information was extracted from the official product manual.\n"]
+    for topic, content in knowledge.items():
+        label = topic.replace("_", " ").title()
+        if content and content.strip():
+            lines.append(f"[{label}]")
+            lines.append(content.strip())
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _call_llm_generate_faqs(
+    enriched_result: Dict[str, Any],
+    locale: str = "en-US",
+    manual_knowledge: Optional[Dict[str, str]] = None,
+) -> list:
+    """Generate product FAQs from the final enriched catalog result.
+
+    Without *manual_knowledge*: generates 3-5 basic FAQs from the product
+    data alone (title, description, tags, etc.).
+
+    With *manual_knowledge*: generates up to 10 richer FAQs that draw from
+    both the product data **and** the extracted manual content.  The prompt
+    instructs the LLM to avoid duplicating what the description already
+    covers, so FAQs surface genuinely new details from the manual.
+    """
+    has_manual = bool(manual_knowledge and any(v.strip() for v in manual_knowledge.values()))
+    logger.info("[FAQ] Generating FAQs: keys=%s, locale=%s, has_manual=%s",
+                list(enriched_result.keys()), locale, has_manual)
+
+    if not (api_key := os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))):
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    product_json = json.dumps(enriched_result, indent=2, ensure_ascii=False)
+
+    if has_manual:
+        manual_section = _format_manual_knowledge(manual_knowledge)
+        prompt = f"""You are a retail product FAQ specialist. Generate up to 10 frequently asked questions and answers for the product described below. You have access to both the product listing AND extracted knowledge from the official product manual.
+
+PRODUCT:
+{product_json}
+
+{manual_section}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
+{info['context']}
+
+RULES:
+- Generate between 5 and 10 FAQs.
+- Each FAQ must have a "question" and an "answer" field.
+- The product description already covers certain details. Generate FAQs about information FROM THE MANUAL that adds to or expands on the description. Do NOT create questions whose answers are fully contained in the description.
+- Prioritize topics where the manual provides specific, detailed information (measurements, ratings, temperatures, durations, capacities, certifications).
+- When the manual knowledge provides precise data, include those specifics in the answer.
+- Answers must be helpful, concise (1-3 sentences), and factual.
+- ONLY reference details present in the product data or manual knowledge above. Do NOT fabricate specifications.
+- Write questions and answers in {info['language']} appropriate for {info['region']}.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array. No markdown, no commentary.
+Example: [{{"question": "...", "answer": "..."}}, ...]"""
+    else:
+        prompt = f"""You are a retail product FAQ specialist. Generate 3 to 5 frequently asked questions and answers for the product described below.
+
+PRODUCT:
+{product_json}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
+{info['context']}
+
+RULES:
+- Generate between 3 and 5 FAQs.
+- Each FAQ must have a "question" and an "answer" field.
+- Questions should cover practical topics a shopper would ask: materials, care instructions, sizing, use cases, compatibility, durability.
+- Answers must be helpful, concise (1-3 sentences), and factual.
+- ONLY reference details present in the product data above. Do NOT fabricate specifications.
+- Write questions and answers in {info['language']} appropriate for {info['region']}.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array. No markdown, no commentary.
+Example: [{{"question": "...", "answer": "..."}}, ...]"""
+
+    max_tokens = 4096 if has_manual else 2048
+    logger.info("[FAQ] Sending prompt to LLM (length: %d chars, max_tokens: %d)", len(prompt), max_tokens)
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+messages=[{"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=4096, stream=True
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[FAQ] LLM response received: %d chars", len(text))
+
+    # Parse JSON array (inline — parse_llm_json only handles dicts)
+    try:
+        cleaned = text.strip()
+        for marker in ("```json", "```"):
+            if marker in cleaned:
+                start = cleaned.find(marker) + len(marker)
+                end = cleaned.find("```", start)
+                if end > start:
+                    cleaned = cleaned[start:end].strip()
+                    break
+        first_bracket = cleaned.find("[")
+        last_bracket = cleaned.rfind("]")
+        if first_bracket != -1 and last_bracket > first_bracket:
+            cleaned = cleaned[first_bracket : last_bracket + 1]
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list) and all(
+            isinstance(f, dict) and "question" in f and "answer" in f
+            for f in parsed
+        ):
+            logger.info("[FAQ] Generated %d FAQs", len(parsed))
+            return parsed
+        logger.warning("[FAQ] Parsed JSON has unexpected structure, returning empty list")
+        return []
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning("[FAQ] JSON parse failed (%s), returning empty list", exc)
+        return []
+
+
+def _call_llm_extract_schema_fields(
+    enriched_result: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Extract structured product attributes from enriched data for protocol schemas.
+
+    Uses the LLM to infer fields like brand, material, age_group, etc.
+    from the product title and description. Returns a dict of extracted
+    fields that can be merged into ACP/UCP schema templates.
+    """
+    logger.info("[Schema] Extracting structured fields for protocol schemas, locale=%s", locale)
+
+    if not (api_key := os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))):
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    product_json = json.dumps(enriched_result, indent=2, ensure_ascii=False)
+
+    prompt = f"""You are a retail product data specialist. Analyze the product data below and extract structured attributes for commerce protocol schemas.
+
+PRODUCT:
+{product_json}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
+
+Extract the following fields from the product title, description, and tags. Return ONLY what can be confidently determined from the data. Use null for anything that cannot be determined.
+
+FIELDS TO EXTRACT:
+- "brand": The brand or manufacturer name (e.g., "Nature Made", "Nike", "Samsung")
+- "condition": Product condition — must be one of: "new", "refurbished", "used". Default to "new" for retail products.
+- "material": Primary material if mentioned (e.g., "leather", "cotton", "plastic")
+- "age_group": Target age — must be one of: "newborn", "infant", "toddler", "kids", "adult". Use null if not determinable.
+- "gender": Target gender — must be one of: "male", "female", "unisex". Use null if not determinable.
+- "short_title": A condensed version of the title, max 65 characters
+- "google_product_category": A Google product taxonomy path (e.g., "Health > Vitamins & Supplements > Fish Oil")
+- "product_details": An array of key product specifications extracted from the description. Each item must have "attribute_name" and "attribute_value" fields. Extract specific, measurable attributes (quantities, weights, certifications, ratings, etc.)
+- "product_highlights": An array of 3-5 concise selling points (max 150 chars each) that go beyond the tags
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON object. No markdown, no commentary.
+Example: {{"brand": "...", "condition": "new", "material": null, "age_group": "adult", "gender": "unisex", "short_title": "...", "google_product_category": "...", "product_details": [{{"attribute_name": "...", "attribute_value": "..."}}], "product_highlights": ["...", "..."]}}"""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Schema] LLM response received: %d chars", len(text))
+
+    try:
+        parsed = parse_llm_json(text)
+        if isinstance(parsed, dict):
+            logger.info("[Schema] Extracted fields: %s", list(parsed.keys()))
+            return parsed
+        logger.warning("[Schema] Parsed JSON is not a dict, returning empty")
+        return {}
+    except Exception as exc:
+        logger.warning("[Schema] JSON parse failed (%s), returning empty dict", exc)
+        return {}
+
+
+def _call_llm_enhance(
+    vlm_output: Dict[str, Any], 
+    product_data: Optional[Dict[str, Any]] = None,
+    locale: str = "en-US", 
+    brand_instructions: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Orchestrate enhancement pipeline for VLM output.
+
+    Pre-filter (conditional - only if product_data provided):
+        - Removes irrelevant terms from user-provided data using category-aware LLM filter
+
+    Step 1: Content enhancement + localization (conditional - only if product_data provided):
+        - Merges pre-filtered product_data with VLM output
+        - Applies anti-hallucination rules (no fabricated specs)
+        - Localizes to target language/region
+        - When no product_data, VLM output is used directly
+
+    Step 2: Brand alignment (conditional - only if brand_instructions provided):
+        - Applies brand voice, tone, taxonomy
+    """
+    logger.info("LLM enhancement pipeline start: vlm_keys=%s, product_keys=%s, locale=%s, brand_instructions=%s", 
+                list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale, bool(brand_instructions))
+    
+    # Pre-filter: Remove irrelevant terms from user-provided data before merging
+    filtered_product_data = product_data
+    if product_data:
+        filtered_product_data = _call_llm_filter_user_data(vlm_output, product_data)
+        logger.info("Pre-filter complete: title_before=%s, title_after=%s",
+                    repr(product_data.get("title", "")), repr(filtered_product_data.get("title", "")))
+
+    # Step 1: Only run enhancement when there is user data with actual content to merge
+    has_content = filtered_product_data and any(
+        v for k, v in filtered_product_data.items()
+        if isinstance(v, str) and v.strip()
+    )
+    if has_content:
+        enhanced = _call_llm_enhance_vlm(vlm_output, filtered_product_data, locale)
+        logger.info("Step 1 complete (enhanced + localized to %s): enhanced_keys=%s", locale, list(enhanced.keys()))
+    else:
+        enhanced = vlm_output
+        logger.info("Step 1 skipped: no product_data with content — using VLM output directly")
+
+    # Step 2: Apply brand instructions if provided
+    if brand_instructions:
+        enhanced = _call_llm_apply_branding(enhanced, brand_instructions, locale)
+        logger.info("Step 2 complete: brand-aligned content ready")
+    else:
+        logger.info("Step 2 skipped: no brand_instructions provided")
+    
+    logger.info("LLM enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
+    return enhanced
+
+def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
+    """Call VLM to analyze product image, then structure the output via LLM.
+
+    Uses a short VLM prompt to minimize hallucinations (longer prompts degrade
+    quality on this model class), then passes the free-text observation to
+    _call_llm_structure_vlm() for JSON structuring and localization.
+    """
+    logger.info("Calling VLM: bytes=%d, content_type=%s, locale=%s", len(image_bytes or b""), content_type, locale)
+
+    api_key = os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))
+    if not api_key:
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    vlm_config = get_config().get_vlm_config()
+    client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
+
+    prompt_text = "Describe this product in detail: appearance, shape, colors, materials, visible text, brand names, labels, and any distinctive design features."
+
+    completion = client.chat.completions.create(
+        model=vlm_config['model'],
+        messages=[{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
+            {"type": "text", "text": prompt_text}
+        ]}],
+        temperature=0.1, top_p=0.9, max_tokens=4096, stream=True
+    )
+
+    text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
+    logger.info("VLM free-text response received: %d chars", len(text))
+
+    return _call_llm_structure_vlm(text.strip(), locale)
+
+
+def _call_llm_structure_vlm(vlm_text: str, locale: str = "en-US") -> Dict[str, Any]:
+    """Structure and enhance free-text VLM output into e-commerce catalog JSON.
+
+    Rewrites the VLM observation into polished catalog copy while staying
+    faithful to the facts described. Localizes to the target language/region.
+    """
+    logger.info("[Structure] Structuring VLM text: %d chars, locale=%s", len(vlm_text), locale)
+
+    if not (api_key := os.getenv("API_KEY", os.getenv("LLM_API_KEY", ""))):
+        raise RuntimeError(API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    categories_str = json.dumps(PRODUCT_CATEGORIES)
+
+    prompt = f"""Convert the visual description below into e-commerce product catalog fields. Write in polished, professional catalog language in {info['language']} for {info['region']} ({info['context']}). Do NOT invent features, materials, or specifications not mentioned in the description.
+
+VISUAL DESCRIPTION:
+{vlm_text}
+
+ALLOWED CATEGORIES: {categories_str}
+
+RULES:
+- title: Compelling product name using only details from the description. Write in {info['language']}.
+- description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, materials, design, and features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
+- categories: Pick 1-2 from the allowed list. Use "uncategorized" if none fit. English.
+- tags: 10 search tags derived from the text. English.
+- colors: 1-2 product colors mentioned in the text. English.
+
+Return ONLY valid JSON:
+{{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}"""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Structure] LLM response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if parsed is not None:
+        logger.info("[Structure] Structured successfully: keys=%s", list(parsed.keys()))
+        return parsed
+
+    logger.warning("[Structure] JSON parse failed, returning raw text as description")
+    return {"title": "", "description": vlm_text, "categories": ["uncategorized"], "tags": [], "colors": []}
+
+
+def extract_vlm_observation(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
+    """Run only the raw VLM observation step."""
+    if not image_bytes:
+        raise ValueError("image_bytes is required")
+    if not isinstance(content_type, str) or not content_type.startswith("image/"):
+        raise ValueError("content_type must be an image/* MIME type")
+
+    vlm_result = _call_vlm(image_bytes, content_type, locale)
+    logger.info(
+        "VLM analysis complete (English): title_len=%d desc_len=%d categories=%s",
+        len(vlm_result.get("title", "")),
+        len(vlm_result.get("description", "")),
+        vlm_result.get("categories", []),
+    )
+    return vlm_result
+
+
+def build_enriched_vlm_result(
+    vlm_result: Dict[str, Any],
+    locale: str = "en-US",
+    product_data: Optional[Dict[str, Any]] = None,
+    brand_instructions: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build enriched catalog fields from a raw VLM observation."""
+    enhanced = _call_llm_enhance(vlm_result, product_data, locale, brand_instructions)
+    logger.info("LLM enhance complete: keys=%s", list(enhanced.keys()))
+
+    categories = (
+        enhanced.get("categories")
+        if enhanced.get("categories") and isinstance(enhanced.get("categories"), list)
+        else vlm_result.get("categories", ["uncategorized"])
+    )
+
+    result = {
+        "title": enhanced.get("title", vlm_result.get("title", "")),
+        "description": enhanced.get("description", vlm_result.get("description", "")),
+        "categories": categories,
+        "tags": enhanced.get("tags", vlm_result.get("tags", [])),
+        "colors": enhanced.get("colors", vlm_result.get("colors", [])),
+    }
+
+    if product_data:
+        result["enhanced_product"] = {**product_data, **enhanced}
+
+    return result
+
+def run_vlm_analysis(
+    image_bytes: bytes,
+    content_type: str,
+    locale: str = "en-US",
+    product_data: Optional[Dict[str, Any]] = None,
+    brand_instructions: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Run VLM analysis on an image to extract product fields.
+    
+    This is a standalone function that runs only the VLM analysis
+    (without image generation).
+    
+    Args:
+        image_bytes: Product image bytes
+        content_type: Image MIME type
+        locale: Target locale for analysis
+        product_data: Optional existing product data to augment
+        brand_instructions: Optional brand-specific tone/style instructions
+
+    Returns:
+        Dict with title, description, categories, tags, colors, and enhanced_product (if augmentation)
+    """
+    logger.info("Running VLM analysis: locale=%s mode=%s brand_instructions=%s", locale, "augmentation" if product_data else "generation", bool(brand_instructions))
+    vlm_result = extract_vlm_observation(image_bytes, content_type, locale)
+    return build_enriched_vlm_result(vlm_result, locale, product_data, brand_instructions)

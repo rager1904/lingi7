@@ -1,0 +1,38 @@
+models:
+  - type: main
+    engine: openai
+    model: llama3.2:3b
+
+  - type: content_safety
+    engine: openai
+    model: llama3.2:3b
+    parameters:
+      base_url: http://llama-guard:8000/v1
+
+  - type: topic_control
+    engine: openai
+    model: llama3.2:3b
+    parameters:
+      base_url: http://llama-guard:8000/v1
+
+bot_messages:
+  refuse to respond:
+    - "Sorry, I am a shopping assistant and can only help you with your shopping needs."
+
+rails:
+  input:
+    flows:
+      - content safety check input $model=content_safety
+      - topic safety check input $model=topic_control
+  output:
+    flows:
+      - content safety check output $model=content_safety
+    streaming:
+      chunk_size: 200
+      context_size: 50
+
+tracing:
+  enabled: True
+  adapters:
+    - name: FileSystem
+      filepath: './traces/traces.jsonl'

@@ -1,0 +1,12 @@
+# Configuration override for local open-source endpoints.
+# This file is safe for CPU-only and self-hosted deployments.
+
+text_embed_port: "http://embeddings:8000/v1"
+text_model_name: "BAAI/bge-small-en-v1.5"
+
+image_embed_port: "http://image-embeddings:8000/v1"
+image_model_name: "openai/clip-vit-base-patch32"
+
+# Note: This override will be applied when CONFIG_OVERRIDE=config-build.yaml.
+# The base config.yaml will be loaded first, then these values will override
+# the corresponding fields in the base configuration.

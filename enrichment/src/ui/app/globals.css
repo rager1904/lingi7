@@ -1,0 +1,154 @@
+@import "tailwindcss/theme.css";
+@import "tailwindcss/preflight.css";
+@import "tailwindcss/utilities.css";
+
+:root {
+  --color-accent: #1769ff;
+  --color-border-base: rgba(134, 164, 224, .20);
+  --color-surface-base: #071126;
+  --color-surface-raised: rgba(11, 24, 53, .84);
+  --color-surface-sunken: rgba(4, 13, 32, .74);
+  --background-color-surface-base: #030a1a;
+  --background-color-surface-sunken: #050f25;
+  --background-color-surface-overlay: #0c1a38;
+  --border-color-base: rgba(134, 164, 224, .20);
+  --text-color-primary: #f8fbff;
+  --text-color-secondary: #b6c3df;
+  --text-color-subtle: #8091b4;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-green-300: #86efac;
+  --color-gray-1000: #020617;
+  --radius-md: 8px;
+}
+
+body {
+  background: var(--background-color-surface-base);
+  color: var(--text-color-primary);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+.app-shell { min-height: 100vh; background: radial-gradient(950px 480px at 80% -8%, rgba(22, 105, 255, .27), transparent 62%), radial-gradient(700px 520px at -5% 42%, rgba(11, 61, 173, .20), transparent 66%), #030a1a; }
+.workbench-main { padding: 116px 32px 56px; max-width: 1480px; margin: 0 auto; }
+.workbench-grid { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: 24px; }
+.workbench-wide { grid-column: 1 / -1; }
+.generated-visuals-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.app-bar { position: fixed; inset: 0 0 auto; z-index: 20; height: 70px; padding: 0 32px; background: rgba(2, 7, 20, .82) !important; border-bottom: 1px solid rgba(129, 163, 228, .16); backdrop-filter: blur(18px); }
+.brand-lockup { display: flex; align-items: baseline; gap: 10px; font-weight: 800; letter-spacing: -.05em; font-size: 24px; color: #f9fbff; }
+.brand-lockup span { color: #5d96ff; font-size: 14px; letter-spacing: -.01em; font-weight: 650; }
+.system-health { border: 1px solid var(--color-border-base); background: rgba(10, 28, 62, .72); border-radius: 10px; padding: 7px 11px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+
+.open-source-green-border { border: 2px solid var(--color-accent) !important; }
+
+.open-source-green-button {
+  background-color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+  color: white !important;
+}
+
+.open-source-green-button:hover:not(:disabled) {
+  background-color: #0b53e8 !important;
+  border-color: #3a7aff !important;
+}
+
+.open-source-green-button:active:not(:disabled) {
+  background-color: #0845c6 !important;
+  border-color: #2669f5 !important;
+}
+
+.open-source-green-button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+.open-source-green-text {
+  color: var(--color-accent) !important;
+}
+
+/* 3D Model Viewer Background */
+.model-viewer-container {
+  background: radial-gradient(circle at center, #163c8a 0%, #050e24 72%);
+  position: relative;
+}
+
+.model-viewer-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at 30% 30%, rgba(48, 118, 255, 0.22) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 70%, rgba(23, 105, 255, 0.12) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.local-nebula { display: none; }
+
+.app-bar {
+  align-items: center;
+  background: transparent;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 32px;
+}
+
+.ui-spinner {
+  animation: ui-spin 0.8s linear infinite;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  border-top-color: var(--color-accent);
+  display: inline-block;
+  height: 18px;
+  width: 18px;
+}
+
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(2, 6, 23, 0.72);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 50;
+}
+
+.modal-panel {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-base);
+  border-radius: 8px;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 24px;
+}
+
+.transparent-header .app-bar {
+  background: rgba(2, 7, 20, .82) !important;
+  border-bottom: 1px solid rgba(129, 163, 228, .16) !important;
+}
+
+.studio-intro { min-height: 155px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; overflow: hidden; position: relative; border: 1px solid rgba(121, 164, 255, .17); border-radius: 18px; background: linear-gradient(100deg, rgba(7, 22, 52, .92), rgba(8, 28, 67, .70)); }
+.studio-intro p { color: #71a2ff; font-size: 11px; font-weight: 750; letter-spacing: .18em; margin: 0 0 10px; }
+.studio-intro h1 { color: #f8fbff; font-size: clamp(28px, 3vw, 42px); letter-spacing: -.045em; line-height: 1.03; margin: 0; max-width: 660px; }
+.studio-intro span { display: block; color: #aab9d7; font-size: 15px; line-height: 1.5; margin-top: 12px; max-width: 620px; }
+.studio-orbit { width: 270px; height: 270px; flex: none; margin-right: -75px; border: 1px solid rgba(117, 161, 255, .55); border-radius: 50%; box-shadow: 0 0 0 28px rgba(26, 94, 235, .08), 0 0 85px rgba(22, 99, 255, .48); transform: rotate(-23deg); }
+section { box-shadow: 0 18px 55px rgba(0,0,0,.15); }
+input, textarea, select { transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: rgba(74, 133, 255, .9) !important; box-shadow: 0 0 0 3px rgba(30, 105, 255, .15); }
+
+@media (max-width: 800px) {
+  .workbench-main { padding: 88px 16px 32px; }
+  .workbench-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+  .generated-visuals-grid { grid-template-columns: 1fr; gap: 16px; }
+  .studio-intro { padding: 22px; min-height: 0; }
+  .studio-orbit { display: none; }
+  .app-bar { padding: 0 16px; }
+  .app-bar .system-health { display: none; }
+}
+
+

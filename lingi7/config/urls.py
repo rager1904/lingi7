@@ -91,3 +91,36 @@ if settings.DEBUG:
 # ── Serve media in dev ────────────────────────────────────────────────────────
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# ── Colab: serve built frontends through Django ───────────────────────────────
+import os
+_FRONTEND_DIST = os.path.join(settings.BASE_DIR, "lingi7", "frontend", "dist")
+_ENRICHMENT_OUT = os.path.join(settings.BASE_DIR, "enrichment", "src", "ui", "out")
+
+if os.path.isdir(_FRONTEND_DIST):
+    from django.http import FileResponse
+
+    def _serve_spa(request, path=""):
+        index = os.path.join(_FRONTEND_DIST, "index.html")
+        if os.path.exists(index):
+            return FileResponse(open(index, "rb"), content_type="text/html")
+        return JsonResponse({"error": "Frontend not built"}, status=404)
+
+    # Serve built static assets
+    urlpatterns += static("/assets/", document_root=os.path.join(_FRONTEND_DIST, "assets"))
+    if os.path.isdir(os.path.join(_FRONTEND_DIST, "design")):
+        urlpatterns += static("/design/", document_root=os.path.join(_FRONTEND_DIST, "design"))
+
+    from django.urls import re_path
+    urlpatterns += [re_path(r"^(?:store|shop|cart|checkout|wishlist|auth|profile|products)(?:/.*)?$", _serve_spa)]
+    urlpatterns += [re_path(r"^$", _serve_spa)]
+
+if os.path.isdir(_ENRICHMENT_OUT):
+    def _serve_enrichment(request, path=""):
+        index = os.path.join(_ENRICHMENT_OUT, "index.html")
+        if os.path.exists(index):
+            return FileResponse(open(index, "rb"), content_type="text/html")
+        return JsonResponse({"error": "Enrichment UI not built"}, status=404)
+
+    urlpatterns += static("/_next/", document_root=os.path.join(_ENRICHMENT_OUT, "_next"))
+    urlpatterns += [re_path(r"^workbench(?:/.*)?$", _serve_enrichment)]

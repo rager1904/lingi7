@@ -94,8 +94,8 @@ if settings.DEBUG:
 
 # ── Colab: serve built frontends through Django ───────────────────────────────
 import os
-_FRONTEND_DIST = os.path.join(settings.BASE_DIR, "lingi7", "frontend", "dist")
-_ENRICHMENT_OUT = os.path.join(settings.BASE_DIR, "enrichment", "src", "ui", "out")
+_FRONTEND_DIST = os.path.join(settings.BASE_DIR, "frontend", "dist")
+_ENRICHMENT_OUT = os.path.join(settings.BASE_DIR.parent, "enrichment", "src", "ui", "out")
 
 if os.path.isdir(_FRONTEND_DIST):
     from django.http import FileResponse

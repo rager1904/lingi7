@@ -1,17 +1,13 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  output: process.env.NEXT_OUTPUT_STANDALONE === 'false' ? undefined : 'standalone',
+  output: 'export',
+  trailingSlash: true,
   experimental: {
     externalDir: true,
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-      },
-    ];
+  images: {
+    unoptimized: true,
   },
   webpack: (config) => {
     config.resolve.extensionAlias = {

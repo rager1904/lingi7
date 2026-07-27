@@ -96,9 +96,9 @@ class KYCUploadSerializer(serializers.Serializer):
             ("Western", "Western"),
         ]
     )
-    nrc_front_key = serializers.CharField(max_length=512)
-    nrc_back_key = serializers.CharField(max_length=512)
-    selfie_key = serializers.CharField(max_length=512)
+    nrc_front_key = serializers.CharField(max_length=512, required=False, default="")
+    nrc_back_key = serializers.CharField(max_length=512, required=False, default="")
+    selfie_key = serializers.CharField(max_length=512, required=False, default="")
 
     def validate(self, data: dict) -> dict:
         request = self.context.get("request")

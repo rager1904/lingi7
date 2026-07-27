@@ -117,22 +117,20 @@ if os.path.isdir(_FRONTEND_DIST):
 
 if os.path.isdir(_ENRICHMENT_OUT):
     def _serve_enrichment(request, path=""):
+        # Strip leading slash from captured path
+        rel = path.lstrip("/") if path else ""
         # Try exact file first, then index.html for SPA fallback
-        file_path = os.path.join(_ENRICHMENT_OUT, path)
-        if path and os.path.isfile(file_path):
-            content_type = "text/html"
-            if path.endswith(".js"):
-                content_type = "application/javascript"
-            elif path.endswith(".css"):
-                content_type = "text/css"
-            elif path.endswith(".json"):
-                content_type = "application/json"
-            elif path.endswith(".png") or path.endswith(".jpg"):
-                content_type = "image/png"
-            return FileResponse(open(file_path, "rb"), content_type=content_type)
+        if rel:
+            file_path = os.path.join(_ENRICHMENT_OUT, rel)
+            if os.path.isfile(file_path):
+                import mimetypes
+                content_type, _ = mimetypes.guess_type(file_path)
+                if content_type is None:
+                    content_type = "application/octet-stream"
+                return FileResponse(open(file_path, "rb"), content_type=content_type)
         index = os.path.join(_ENRICHMENT_OUT, "index.html")
         if os.path.exists(index):
             return FileResponse(open(index, "rb"), content_type="text/html")
         return JsonResponse({"error": "Enrichment UI not built"}, status=404)
 
-    urlpatterns += [re_path(r"^workbench(?:/.*)?$", _serve_enrichment)]
+    urlpatterns += [re_path(r"^workbench(?:/(?P<path>.*))?$", _serve_enrichment)]

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,12 +22,10 @@ export default function RootLayout({
   return (
     <html lang="en" style={{ backgroundColor: '#0c0c0c' }}>
       <head>
-        {/* Load model-viewer library */}
-        <Script 
+        <script 
           type="module" 
           src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
-          strategy="beforeInteractive"
-        />
+        ></script>
       </head>
       <body className="text-primary min-h-screen" style={{ backgroundColor: 'var(--background-color-surface-base)' }}>
         {children}

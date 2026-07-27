@@ -68,7 +68,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",        # Must be before CommonMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
+    "apps.core.tunnel_csrf.TunnelCsrfMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_otp.middleware.OTPMiddleware",          # 2FA enforcement for admin
     "django.contrib.messages.middleware.MessageMiddleware",

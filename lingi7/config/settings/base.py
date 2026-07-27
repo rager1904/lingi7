@@ -269,6 +269,8 @@ SERVER_EMAIL = config("SERVER_EMAIL", default="noreply@lingi7.co.zm")
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="http://localhost:3000", cast=Csv())
 CORS_ALLOW_CREDENTIALS = True
 
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="http://localhost:8000", cast=Csv())
+
 # ── OpenAPI / Spectacular ─────────────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
     "TITLE": "Lingi7 API",

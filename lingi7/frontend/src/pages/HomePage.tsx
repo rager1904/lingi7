@@ -61,8 +61,14 @@ const HomePage: React.FC = () => {
           <Link to="/shops" className="mt-5 inline-flex w-fit items-center rounded-xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/20">Browse stores →</Link>
           <div className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-sm text-blue-100"><span>◈ Verified sellers</span><span>◈ Secure checkout</span><span>◈ Delivery tracking</span></div>
         </div>
-        <div className="hero-products relative min-h-[380px] sm:min-h-[440px]" aria-hidden="true">
-          <div className="product-visual headphone">◉<span>IMMERSIVE<br/>AUDIO</span></div><div className="product-visual shoe">◒<span>MOVE<br/>FREELY</span></div><div className="product-visual watch">◌<span>TIME,<br/>REIMAGINED</span></div>
+        <div className="hero-products relative min-h-[380px] sm:min-h-[440px]">
+          {products.slice(0, 3).map((p, i) => {
+            const positions = ["headphone", "shoe", "watch"];
+            return <Link key={p.id} to={`/products/${p.slug}`} className={`product-visual ${positions[i]} overflow-hidden`}>
+              {p.primary_image_url ? <img src={p.primary_image_url} alt={p.name} className="h-full w-full object-cover" loading={i === 0 ? "eager" : "lazy"} /> : <span className="text-7xl opacity-40">✦</span>}
+              <span>{p.name.toUpperCase()}</span>
+            </Link>;
+          })}
         </div>
       </div>
     </motion.section>
@@ -152,7 +158,7 @@ const LikeButton: React.FC<{ productId: number; className?: string }> = ({ produ
 const SectionHeading = ({ id, title, link }: {id: string; title: string; link: string}) => <div className="mb-6 flex items-end justify-between"><h2 id={id} className="text-3xl font-black tracking-tight text-slate-950">{title}</h2><button className="text-sm font-bold text-blue-600 hover:text-blue-700">{link} →</button></div>;
 const Time = ({ unit }: { unit: string }) => <span className="rounded-xl bg-white/10 px-3 py-2 text-xl font-black backdrop-blur">{unit}</span>;
 const Stat = ({ value, label }: {value: string; label: string}) => <div><p className="text-3xl font-black text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{label}</p></div>;
-const DealCard = ({product, add}: {product: DemoProduct; add: (p: DemoProduct) => void}) => <div className="rounded-2xl bg-white/[.07] p-4 backdrop-blur"><div className={`grid h-32 place-items-center rounded-xl bg-gradient-to-br ${product.tone} text-5xl`}>✦</div><div className="mt-3 flex items-start justify-between gap-2"><div><p className="text-sm font-semibold text-white line-clamp-1">{product.name}</p><p className="mt-1 font-black text-cyan-200">{formatZMW(product.price_zmw)}</p></div><button onClick={() => add(product)} aria-label={`Add ${product.name}`} className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400">+</button></div></div>;
+const DealCard = ({product, add}: {product: DemoProduct; add: (p: DemoProduct) => void}) => <div className="rounded-2xl bg-white/[.07] p-4 backdrop-blur"><Link to={`/products/${product.slug}`} className={`grid h-32 place-items-center overflow-hidden rounded-xl bg-gradient-to-br ${product.tone}`}>{product.primary_image_url ? <img src={product.primary_image_url} alt={product.name} className="h-full w-full object-cover" loading="lazy" /> : <span className="text-5xl text-white/60">✦</span>}</Link><div className="mt-3 flex items-start justify-between gap-2"><div><Link to={`/products/${product.slug}`} className="text-sm font-semibold text-white line-clamp-1 hover:underline">{product.name}</Link><p className="mt-1 font-black text-cyan-200">{formatZMW(product.price_zmw)}</p></div><button onClick={() => add(product)} aria-label={`Add ${product.name}`} className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400">+</button></div></div>;
 const FeaturedCarousel = ({ products, add }: { products: DemoProduct[]; add: (product: DemoProduct) => void }) => {
   const [emblaRef, emblaApi] = useEmblaCarousel({ align: "start", containScroll: "trimSnaps" });
   const [canPrev, setCanPrev] = useState(false);

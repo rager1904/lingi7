@@ -57,6 +57,7 @@ LOCAL_APPS = [
     "apps.products",
     "apps.notifications",
     "apps.recommendations",
+    "apps.cart",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -381,6 +382,8 @@ ASSISTANT_CATALOG_CSV_PATH = config(
     "ASSISTANT_CATALOG_CSV_PATH",
     default=str(BASE_DIR.parent / "assistant" / "shared" / "data" / "products_extended.csv"),
 )
+MEMORY_RETRIEVER_URL = config("MEMORY_RETRIEVER_URL", default="http://localhost:8011")
+
 CATALOG_RETRIEVER_URL = config(
     "CATALOG_RETRIEVER_URL",
     default="http://catalog-retriever:8010",

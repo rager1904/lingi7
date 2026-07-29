@@ -69,6 +69,7 @@ urlpatterns = [
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/recommendations/", include("apps.recommendations.urls")),
     path("api/v1/admin/",         include("apps.admin_audit.urls")),
+    path("api/v1/cart/",          include("apps.cart.urls")),
     path("api/v1/platform/",      platform_status, name="platform-status"),
 ]
 

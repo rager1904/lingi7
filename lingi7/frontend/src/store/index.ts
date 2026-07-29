@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { User } from "../types";
+import apiClient from "../api/client";
 
 // ─── Auth Store ───────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ export const useCartStore = create<CartState>()(
       items: [],
       sellerSwitchNotice: null,
 
-      addItem: (item, quantity = 1) =>
+      addItem: (item, quantity = 1) => {
         set((state) => {
           if (
             state.items.length > 0 &&
@@ -107,14 +108,29 @@ export const useCartStore = create<CartState>()(
             ],
             sellerSwitchNotice: null,
           };
-        }),
+        });
+        apiClient.post("/cart/add/", {
+          item: item.product_name,
+          amount: quantity,
+          price: parseFloat(item.price_zmw),
+        }).catch(() => {});
+      },
 
-      removeItem: (productId) =>
+      removeItem: (productId) => {
+        const item = get().items.find((i) => i.product_id === productId);
         set((state) => ({
           items: state.items.filter((i) => i.product_id !== productId),
-        })),
+        }));
+        if (item) {
+          apiClient.post("/cart/remove/", {
+            item: item.product_name,
+            amount: item.quantity,
+          }).catch(() => {});
+        }
+      },
 
-      updateQuantity: (productId, quantity) =>
+      updateQuantity: (productId, quantity) => {
+        const old = get().items.find((i) => i.product_id === productId);
         set((state) => ({
           items: state.items
             .map((i) =>
@@ -123,7 +139,24 @@ export const useCartStore = create<CartState>()(
                 : i
             )
             .filter((i) => i.quantity > 0),
-        })),
+        }));
+        if (old) {
+          const newQty = Math.min(Math.max(1, quantity), old.max_stock);
+          const delta = newQty - old.quantity;
+          if (delta > 0) {
+            apiClient.post("/cart/add/", {
+              item: old.product_name,
+              amount: delta,
+              price: parseFloat(old.price_zmw),
+            }).catch(() => {});
+          } else if (delta < 0) {
+            apiClient.post("/cart/remove/", {
+              item: old.product_name,
+              amount: Math.abs(delta),
+            }).catch(() => {});
+          }
+        }
+      },
 
       clearCart: () => set({ items: [], sellerSwitchNotice: null }),
       clearSellerSwitchNotice: () => set({ sellerSwitchNotice: null }),

@@ -18,6 +18,7 @@ import random
 from pathlib import Path
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -170,6 +171,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # Disable Celery enrichment tasks — Redis is unavailable on Colab
+        settings.CATALOG_AUTO_ENRICH_ON_IMAGE = False
+
         count = min(options["products"], 40)
         vendor_phone = options["vendor_phone"]
         vendor_password = options["vendor_password"]

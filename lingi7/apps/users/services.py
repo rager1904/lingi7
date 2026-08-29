@@ -20,13 +20,32 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from .models import KYCStatus, User, UserRole
+from .models import (
+    KYCStatus,
+    User,
+    UserRole,
+    VerificationCode,
+    VerificationPurpose,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# ------------------------------------------------------------------ #
+# Post-registration notifications                                     #
+# ------------------------------------------------------------------ #
+
+
+def _post_registration_notifications(user_id: str) -> None:
+    """Queue welcome + phone-verification OTP for a newly registered user."""
+    from apps.notifications.tasks import dispatch_registration
+
+    dispatch_registration(user_pk=user_id)  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------------------ #
@@ -150,6 +169,10 @@ class UserService:
             raise DuplicatePhoneError(
                 f"Phone number {phone_number} is already registered."
             )
+
+        # Fire welcome notifications + phone-verification OTP after commit so
+        # a failed notification never rolls back the registration.
+        transaction.on_commit(lambda: _post_registration_notifications(user.id))
 
         logger.info(
             "user.registered",
@@ -447,3 +470,181 @@ class UserService:
             user.save(update_fields=["data_deletion_requested_at"])
             logger.info("user.deletion_requested", extra={"user_id": str(user.id)})
         return user
+
+
+# ------------------------------------------------------------------ #
+# Verification (OTP) service                                          #
+# ------------------------------------------------------------------ #
+
+
+class VerificationService:
+    """
+    Generates and verifies short-lived one-time codes for phone/email
+    verification and password reset.
+
+    Delivery goes through NotificationService so every code dispatch is
+    logged in NotificationLog — never providers directly.
+    """
+
+    # ---------------------------------------------------------------- #
+    # Send                                                             #
+    # ---------------------------------------------------------------- #
+
+    @staticmethod
+    def send_phone_verify(user: User) -> VerificationCode:
+        """Generate a PHONE_VERIFY code and deliver it by SMS."""
+        from apps.notifications.models import (
+            NotificationChannel,
+            NotificationEventType,
+        )
+        from apps.notifications.services import NotificationService
+
+        record, code = VerificationCode.create_code(
+            user=user,
+            purpose=VerificationPurpose.PHONE_VERIFY,
+            channel=NotificationChannel.SMS,
+            target=user.phone_number,
+        )
+        NotificationService.send_sms(
+            phone_number=user.phone_number,
+            event_type=NotificationEventType.LOGIN_OTP,
+            context={"otp": code, "name": user.first_name},
+            recipient=user,
+            related_object_id=str(user.id),
+            related_object_type="users.User",
+        )
+        return record
+
+    @staticmethod
+    def send_email_verify(user: User) -> VerificationCode:
+        """Generate an EMAIL_VERIFY code and deliver it by email."""
+        from apps.notifications.models import (
+            NotificationChannel,
+            NotificationEventType,
+        )
+        from apps.notifications.services import NotificationService
+
+        record, code = VerificationCode.create_code(
+            user=user,
+            purpose=VerificationPurpose.EMAIL_VERIFY,
+            channel=NotificationChannel.EMAIL,
+            target=user.email,
+        )
+        NotificationService.send_email(
+            to_address=user.email,
+            event_type=NotificationEventType.LOGIN_OTP,
+            context={"otp": code, "name": user.first_name},
+            recipient=user,
+            related_object_id=str(user.id),
+            related_object_type="users.User",
+        )
+        return record
+
+    @staticmethod
+    def send_password_reset(user: User) -> VerificationCode:
+        """Generate a PASSWORD_RESET code.
+
+        Delivered by email when the user has one, otherwise by SMS to
+        their phone number.
+        """
+        from apps.notifications.models import (
+            NotificationChannel,
+            NotificationEventType,
+        )
+        from apps.notifications.services import NotificationService
+
+        if user.email:
+            channel = NotificationChannel.EMAIL
+            target = user.email
+        else:
+            channel = NotificationChannel.SMS
+            target = user.phone_number
+
+        record, code = VerificationCode.create_code(
+            user=user,
+            purpose=VerificationPurpose.PASSWORD_RESET,
+            channel=channel,
+            target=target,
+        )
+
+        context = {"otp": code, "name": user.first_name}
+        if channel == NotificationChannel.EMAIL:
+            NotificationService.send_email(
+                to_address=target,
+                event_type=NotificationEventType.PASSWORD_RESET,
+                context=context,
+                recipient=user,
+            )
+        else:
+            NotificationService.send_sms(
+                phone_number=target,
+                event_type=NotificationEventType.PASSWORD_RESET,
+                context=context,
+                recipient=user,
+            )
+        return record
+
+    # ---------------------------------------------------------------- #
+    # Verify                                                           #
+    # ---------------------------------------------------------------- #
+
+    @staticmethod
+    def confirm_code(
+        *,
+        user: User,
+        purpose: str,
+        code: str,
+        target: str = "",
+    ) -> bool:
+        """Confirm a one-time code for the given purpose.
+
+        On success marks phone_verified/email_verified as appropriate.
+
+        Args:
+            user:    The user verifying.
+            purpose: VerificationPurpose value.
+            code:    Plaintext code supplied by the user.
+            target:  Expected address (phone/email). If empty, matches
+                     any outstanding code for the user + purpose.
+
+        Returns:
+            True when the code was valid and consumed.
+        """
+        qs = VerificationCode.objects.filter(
+            user=user,
+            purpose=purpose,
+            consumed=False,
+        )
+        if target:
+            qs = qs.filter(target=target)
+        record = qs.order_by("-created_at").first()
+        if record is None:
+            return False
+
+        if not record.check_code(code):
+            return False
+
+        if purpose == VerificationPurpose.PHONE_VERIFY:
+            user.phone_verified = True
+            user.save(update_fields=["phone_verified"])
+        elif purpose == VerificationPurpose.EMAIL_VERIFY:
+            user.email_verified = True
+            user.save(update_fields=["email_verified"])
+
+        logger.info(
+            "verification.confirmed",
+            extra={"user_id": str(user.id), "purpose": purpose},
+        )
+        return True
+
+    @staticmethod
+    def find_by_phone(phone_number: str) -> Optional["User"]:
+        """Locate a user by (normalised) phone number.
+
+        Returns None if no matching active user exists — callers must
+        not reveal whether a phone is registered.
+        """
+        from .managers import UserManager
+
+        phone = UserManager._normalise_phone(phone_number)
+        return User.objects.filter(phone_number=phone).first()

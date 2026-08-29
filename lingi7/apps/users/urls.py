@@ -15,10 +15,15 @@ from .views import (
     AdminUnfreezeView,
     AdminUserDetailView,
     AdminUserListView,
+    ChangePasswordView,
     KYCSubmitView,
     KYCUploadFileView,
     LingiTokenObtainPairView,
     MeView,
+    PasswordResetConfirmView,
+    PasswordResetView,
+    PhoneVerifyConfirmView,
+    PhoneVerifyView,
     RegisterView,
 )
 
@@ -31,6 +36,25 @@ urlpatterns = [
     path("token/", LingiTokenObtainPairView.as_view(), name="token_obtain"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("token/blacklist/", TokenBlacklistView.as_view(), name="token_blacklist"),
+    path("change-password/", ChangePasswordView.as_view(), name="change_password"),
+    # ---------------------------------------------------------------- #
+    # Phone verification                                                #
+    # ---------------------------------------------------------------- #
+    path("verify-phone/", PhoneVerifyView.as_view(), name="verify_phone"),
+    path(
+        "verify-phone/confirm/",
+        PhoneVerifyConfirmView.as_view(),
+        name="verify_phone_confirm",
+    ),
+    # ---------------------------------------------------------------- #
+    # Password reset                                                    #
+    # ---------------------------------------------------------------- #
+    path("password/reset/", PasswordResetView.as_view(), name="password_reset"),
+    path(
+        "password/reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="password_reset_confirm",
+    ),
     # ---------------------------------------------------------------- #
     # Registration                                                      #
     # ---------------------------------------------------------------- #

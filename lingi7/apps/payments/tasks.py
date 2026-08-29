@@ -222,6 +222,48 @@ def auto_complete_mock_payment(self, payment_attempt_id: str) -> None:
 
 @shared_task(
     bind=True,
+    name="payments.sweep_pending_payment_statuses",
+)
+def sweep_pending_payment_statuses(self) -> int:
+    """
+    Find every PENDING collection attempt past its grace period and dispatch
+    a poll for it.
+
+    Fallback so payments confirm even when no webhook callback URL is
+    configured (e.g. MTN sandbox). Runs every 5 minutes via Celery Beat and
+    dispatches the existing poll_pending_payment_status task per attempt.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone as tz
+
+    from .models import PaymentAttempt
+
+    threshold = tz.now() - timedelta(minutes=2)
+    attempts = (
+        PaymentAttempt.objects.filter(
+            direction=PaymentAttempt.Direction.COLLECTION,
+            status=PaymentAttempt.Status.PENDING,
+            created_at__lte=threshold,
+        )
+        .exclude(provider_reference="")
+        .order_by("created_at")[:50]
+    )
+
+    dispatched = 0
+    for attempt in attempts:
+        poll_pending_payment_status.delay(str(attempt.id))
+        dispatched += 1
+
+    logger.info(
+        "Sweep dispatched %d pending payment poll(s)",
+        dispatched,
+    )
+    return dispatched
+
+
+@shared_task(
+    bind=True,
     name="payments.retry_dead_letters",
     max_retries=1,
 )

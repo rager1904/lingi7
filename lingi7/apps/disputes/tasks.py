@@ -49,12 +49,14 @@ def sla_breach_alert() -> dict:
             dispute.assigned_to.phone_number if dispute.assigned_to else None
         )
         if assignee_phone:
-            NotificationService.send_sms(
-                to=assignee_phone,
+            NotificationService.send_alert_sms(
+                phone_number=assignee_phone,
                 body=(
                     f"[LINGI7 ALERT] Dispute {dispute.pk} has breached its 72h SLA. "
                     f"Order: {dispute.order_id}. Immediate resolution required."
                 ),
+                related_object_id=str(dispute.pk),
+                related_object_type="disputes.Dispute",
             )
 
     logger.info("SLA breach check complete: %d breached disputes found.", count)
@@ -82,13 +84,15 @@ def notify_vendor_dispute_raised(dispute_id: str) -> None:
         return
 
     vendor = dispute.order.store.owner
+    from apps.notifications.models import NotificationEventType
+
     NotificationService.send_sms(
-        to=vendor.phone_number,
-        body=(
-            f"A dispute has been raised on order {dispute.order_id}. "
-            f"Reason: {dispute.get_reason_display()}. "
-            "Please log into your vendor portal and submit evidence within 48 hours."
-        ),
+        phone_number=vendor.phone_number,
+        event_type=NotificationEventType.DISPUTE_OPENED,
+        context={"order_id": str(dispute.order_id)},
+        recipient=vendor,
+        related_object_id=str(dispute.pk),
+        related_object_type="disputes.Dispute",
     )
 
     logger.info(

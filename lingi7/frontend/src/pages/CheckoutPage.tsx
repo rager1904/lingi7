@@ -22,7 +22,7 @@ import {
   extractFieldErrors,
   extractMessage,
 } from "../utils";
-import type { FulfilmentType, PaymentProvider } from "../types";
+import type { FulfilmentType, PaymentProvider, PaymentSimulateAction } from "../types";
 import { FULFILMENT_TYPE_LABEL } from "../utils";
 
 type CheckoutStep = "review" | "payment" | "processing" | "error";
@@ -52,12 +52,16 @@ const CheckoutPage: React.FC = () => {
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [orderTotals, setOrderTotals] = useState<OrderTotals | null>(null);
+  const [simAction, setSimAction] = useState<PaymentSimulateAction | null>(null);
+  const [simNotice, setSimNotice] = useState<string | null>(null);
+  const [pollToken, setPollToken] = useState(0);
 
   const { attempt, isPolling } = usePaymentPoller(paymentId, {
     onTerminalFailure: (msg) => {
       setStep("error");
       setErrorMessage(msg);
     },
+    refreshToken: pollToken,
   });
 
   React.useEffect(() => {
@@ -146,6 +150,8 @@ const CheckoutPage: React.FC = () => {
     }
 
     setStep("processing");
+    setSimAction(null);
+    setSimNotice(null);
 
     try {
       const id = await ensureOrder();
@@ -170,6 +176,8 @@ const CheckoutPage: React.FC = () => {
     }
     setStep("processing");
     setPaymentId(null);
+    setSimAction(null);
+    setSimNotice(null);
     try {
       const payment = await paymentsApi.initiate({
         order_id: orderId,
@@ -180,6 +188,25 @@ const CheckoutPage: React.FC = () => {
     } catch (err) {
       setErrorMessage(extractMessage(err));
       setStep("error");
+    }
+  };
+
+  const handleSimulate = async (action: PaymentSimulateAction) => {
+    if (!paymentId || simAction) return;
+    const amount = orderTotals ? displayTotals.total : cartSubtotal;
+    setSimAction(action);
+    setSimNotice(
+      action === "APPROVE"
+        ? `You have approved a payment of ${formatZMW(amount)} to Lingi7.`
+        : `You have declined a payment of ${formatZMW(amount)} to Lingi7.`
+    );
+    try {
+      await paymentsApi.simulate(paymentId, action);
+    } catch (err) {
+      setSimNotice(extractMessage(err) || "Payment could not be simulated. Try again.");
+    } finally {
+      setSimAction(null);
+      setPollToken((t) => t + 1);
     }
   };
 
@@ -388,23 +415,37 @@ const CheckoutPage: React.FC = () => {
 
       {step === "processing" && (
         <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-          <h2 className="mb-2 text-lg font-semibold text-gray-900">
-            Waiting for Payment Approval
-          </h2>
-          <p className="text-sm text-gray-500">
-            {isPolling
-              ? `Check your phone for a ${provider === "MTN" ? "MTN MoMo" : "Airtel Money"} USSD prompt and enter your PIN to approve.`
-              : "Initiating payment request..."}
-          </p>
-          {orderTotals && (
-            <p className="mt-3 text-sm font-medium text-gray-800">
-              Amount: {formatZMW(orderTotals.total)}
-            </p>
+          {!paymentId || !attempt || attempt.status !== "PENDING" ? (
+            <>
+              <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+              <h2 className="mb-2 text-lg font-semibold text-gray-900">
+                Waiting for Payment Approval
+              </h2>
+              <p className="text-sm text-gray-500">
+                {isPolling
+                  ? `Check your phone for a ${provider === "MTN" ? "MTN MoMo" : "Airtel Money"} USSD prompt and enter your PIN to approve.`
+                  : "Initiating payment request..."}
+              </p>
+              {orderTotals && (
+                <p className="mt-3 text-sm font-medium text-gray-800">
+                  Amount: {formatZMW(orderTotals.total)}
+                </p>
+              )}
+              <p className="mt-4 text-xs text-gray-400">
+                Your funds will be held securely in escrow until delivery is confirmed.
+              </p>
+            </>
+          ) : (
+            <PaymentSimulator
+              provider={provider}
+              amount={orderTotals ? displayTotals.total : cartSubtotal}
+              reference={attempt.external_reference ?? undefined}
+              notice={simNotice}
+              busy={!!simAction}
+              onApprove={() => handleSimulate("APPROVE")}
+              onDecline={() => handleSimulate("DECLINE")}
+            />
           )}
-          <p className="mt-4 text-xs text-gray-400">
-            Your funds will be held securely in escrow until delivery is confirmed.
-          </p>
         </div>
       )}
 
@@ -525,6 +566,96 @@ const EscrowNotice: React.FC<{ total: number }> = ({ total }) => (
     protected against non-delivery.
   </div>
 );
+
+const PaymentSimulator: React.FC<{
+  provider: PaymentProvider;
+  amount: number;
+  reference?: string;
+  notice?: string | null;
+  busy: boolean;
+  onApprove: () => void;
+  onDecline: () => void;
+}> = ({ provider, amount, reference, notice, busy, onApprove, onDecline }) => {
+  const isMTN = provider === "MTN";
+  const dialCode = isMTN ? "*126#" : "*185#";
+  const ref = reference ? reference.slice(0, 12) : "—";
+
+  return (
+    <div className="space-y-5 text-left">
+      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        Sandbox simulator — a real{" "}
+        {isMTN ? "MTN MoMo" : "Airtel Money"} prompt would arrive via USSD on your
+        phone ({dialCode}). Approve or decline below to test the flow — no real
+        money moves in sandbox.
+      </p>
+
+      <div className="flex justify-center">
+        <div className="w-full max-w-[17rem] overflow-hidden rounded-2xl bg-slate-900 shadow-lg ring-1 ring-slate-700">
+          <div className="flex items-center justify-between bg-slate-800 px-4 py-2 text-[10px] text-slate-300">
+            <span>{isMTN ? "MTN Zambia" : "Airtel Zambia"}</span>
+            <span className="tracking-widest">▮▮▮</span>
+          </div>
+          <div className="mx-3 my-3 rounded-lg bg-teal-900 p-4 font-mono text-sm leading-6 text-green-100">
+            <p className="font-bold text-yellow-400">
+              {isMTN ? "MTN Mobile Money" : "Airtel Money"}
+            </p>
+            <p className="mt-1 text-xs text-green-300/80">
+              {isMTN ? "MoMoPay 1.0" : "Instant Money"}
+            </p>
+            <p className="mt-3">Confirm payment to LINGI7:</p>
+            <p className="font-bold">K {amount.toFixed(2)}</p>
+            <p className="text-xs text-green-300/80">Ref: {ref}</p>
+            <p>1) Enter PIN to confirm</p>
+            <p>2) Cancel payment</p>
+            <div className="mt-2 flex items-center gap-1 text-yellow-300">
+              <span>&gt;&gt;</span>
+              <span className="inline-block h-4 w-2 animate-pulse bg-yellow-300" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between border-t border-slate-800 px-4 py-2 text-[10px] text-slate-500">
+            <span>
+              Dial: <span className="font-mono text-slate-300">{dialCode}</span>
+            </span>
+            <span>SIM 1</span>
+          </div>
+        </div>
+      </div>
+
+      {notice && (
+        <div className="mx-auto max-w-[17rem] rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+            SMS received
+          </p>
+          <p className="mt-1 text-xs leading-5 text-gray-700">
+            <span className="font-semibold">
+              {isMTN ? "MTN Money" : "Airtel Money"}
+            </span>
+            : {notice} Ref: {ref}. {new Date().toLocaleString()}
+          </p>
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={onApprove}
+          disabled={busy}
+          className="flex-1 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {busy ? "Sending USSD response…" : "Approve (1)"}
+        </button>
+        <button
+          type="button"
+          onClick={onDecline}
+          disabled={busy}
+          className="flex-1 rounded-lg border border-red-300 bg-white py-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+        >
+          Decline (2)
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const ProviderCard: React.FC<{
   provider: PaymentProvider;

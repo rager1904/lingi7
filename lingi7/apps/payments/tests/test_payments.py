@@ -17,9 +17,10 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
-from django.test import TestCase, RequestFactory
+from django.test import override_settings, TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from rest_framework.test import force_authenticate
 
 User = get_user_model()
 
@@ -648,3 +649,117 @@ class TestPaymentServiceCollectionLimits(TestCase):
                 payer_phone="260971234567",
                 reference="ORDER-001",
             )
+
+
+# ------------------------------------------------------------------ #
+# PaymentSimulateView (sandbox USSD simulator) tests                  #
+# ------------------------------------------------------------------ #
+
+class TestPaymentSimulateView(TestCase):
+    """Tests for the DEBUG-gated simulator used in sandbox checkout."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = User.objects.create_user(
+            phone_number="+260971000003",
+            password="testpass123",
+            role="BUYER",
+        )
+
+    def _make_pending_attempt(self, *, provider_reference: str = "SIM-REF") -> "PaymentAttempt":
+        from apps.payments.models import PaymentAttempt
+        return PaymentAttempt.objects.create(
+            idempotency_key=f"COLLECT-{uuid.uuid4()}-1",
+            order_id=uuid.uuid4(),
+            escrow_account_id=uuid.uuid4(),
+            initiated_by=self.user,
+            provider="MTN_MOMO",
+            direction=PaymentAttempt.Direction.COLLECTION,
+            amount=Decimal("500.00"),
+            payer_phone="260971234567",
+            status=PaymentAttempt.Status.PENDING,
+            provider_reference=provider_reference,
+            attempt_number=1,
+        )
+
+    def _post(self, attempt_id, action, debug=True):
+        from apps.payments.views import PaymentSimulateView
+        request = self.factory.post(
+            f"/api/payments/{attempt_id}/simulate/",
+            data=json.dumps({"action": action}),
+            content_type="application/json",
+        )
+        force_authenticate(request, user=self.user)
+        view = PaymentSimulateView.as_view()
+        if not debug:
+            return view(request)
+        with override_settings(DEBUG=True):
+            return view(request)
+
+    def test_simulate_approve_marks_success_and_dispatches_escrow_hold(self):
+        from apps.payments.models import PaymentAttempt, WebhookEvent
+        with override_settings(DEBUG=True):
+            attempt = self._make_pending_attempt()
+            with patch(
+                "apps.payments.tasks.trigger_escrow_hold_on_payment_success.delay"
+            ) as mock_task:
+                response = self._post(attempt.id, "APPROVE")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["status"], "SUCCESS")
+            attempt.refresh_from_db()
+            self.assertEqual(attempt.status, PaymentAttempt.Status.SUCCESS)
+            self.assertIsNotNone(attempt.confirmed_at)
+            mock_task.assert_called_once()
+            self.assertTrue(
+                WebhookEvent.objects.filter(
+                    provider="MTN_MOMO",
+                    provider_reference=attempt.provider_reference,
+                    status=WebhookEvent.Status.PROCESSED,
+                ).exists()
+            )
+
+    def test_simulate_decline_marks_failed(self):
+        from apps.payments.models import PaymentAttempt
+        with override_settings(DEBUG=True):
+            attempt = self._make_pending_attempt()
+            response = self._post(attempt.id, "DECLINE")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["status"], "FAILED")
+            attempt.refresh_from_db()
+            self.assertEqual(attempt.status, PaymentAttempt.Status.FAILED)
+
+    def test_simulate_rejects_already_terminal_attempt(self):
+        with override_settings(DEBUG=True):
+            attempt = self._make_pending_attempt()
+            self._post(attempt.id, "APPROVE")
+            response = self._post(attempt.id, "APPROVE")
+            self.assertEqual(response.status_code, 400)
+
+    def test_simulate_rejects_unknown_action(self):
+        with override_settings(DEBUG=True):
+            attempt = self._make_pending_attempt()
+            response = self._post(attempt.id, "MAYBE")
+            self.assertEqual(response.status_code, 400)
+
+    def test_simulate_disabled_outside_debug(self):
+        attempt = self._make_pending_attempt()
+        response = self._post(attempt.id, "APPROVE", debug=False)
+        self.assertEqual(response.status_code, 403)
+
+    def test_simulate_requires_ownership(self):
+        other = User.objects.create_user(
+            phone_number="+260971000004",
+            password="testpass123",
+            role="BUYER",
+        )
+        with override_settings(DEBUG=True):
+            attempt = self._make_pending_attempt()
+            request = self.factory.post(
+                f"/api/payments/{attempt.id}/simulate/",
+                data=json.dumps({"action": "APPROVE"}),
+                content_type="application/json",
+            )
+            force_authenticate(request, user=other)
+            from apps.payments.views import PaymentSimulateView
+            response = PaymentSimulateView.as_view()(request)
+            self.assertEqual(response.status_code, 404)

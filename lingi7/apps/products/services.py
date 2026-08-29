@@ -127,7 +127,14 @@ class StoreService:
             after_state={"status": store.status},
         )
         logger.info("Store approved: pk=%s by admin=%s", store.pk, admin_user.pk)
-        # TODO: NotificationService.send_sms(store.owner.phone_number, "Store approved!")
+        from apps.notifications.tasks import dispatch_store_approved
+
+        transaction.on_commit(
+            lambda: dispatch_store_approved(
+                vendor_user_pk=store.owner_id,
+                store_name=store.name,
+            )
+        )
         return store
 
     @staticmethod
@@ -170,7 +177,15 @@ class StoreService:
             after_state={"status": store.status},
         )
         logger.info("Store rejected: pk=%s reason=%s", store.pk, reason)
-        # TODO: NotificationService.send_sms(store.owner.phone_number, f"Store rejected: {reason}")
+        from apps.notifications.tasks import dispatch_store_rejected
+
+        transaction.on_commit(
+            lambda: dispatch_store_rejected(
+                vendor_user_pk=store.owner_id,
+                store_name=store.name,
+                reason=reason,
+            )
+        )
         return store
 
     @staticmethod
@@ -388,8 +403,18 @@ class ProductService:
                 "approved_at": timezone.now(),
                 "rejection_reason": "",
             },
-        )
+)
         transaction.on_commit(lambda: AssistantCatalogIndexer.index_product(product))
+
+        from apps.notifications.tasks import dispatch_listing_approved
+
+        transaction.on_commit(
+            lambda: dispatch_listing_approved(
+                vendor_user_pk=product.store.owner_id,
+                product_name=product.name,
+                product_id=str(product.pk),
+            )
+        )
         return product
 
     @staticmethod
@@ -412,13 +437,25 @@ class ProductService:
         if not reason.strip():
             raise ValueError("A rejection reason is required.")
 
-        return ProductService._transition(
+        product = ProductService._transition(
             product=product,
             new_status=Product.Status.REJECTED,
             actor=admin_user,
             reason=reason,
             extra_fields={"rejection_reason": reason},
         )
+
+        from apps.notifications.tasks import dispatch_listing_rejected
+
+        transaction.on_commit(
+            lambda: dispatch_listing_rejected(
+                vendor_user_pk=product.store.owner_id,
+                product_name=product.name,
+                product_id=str(product.pk),
+                reason=reason,
+            )
+        )
+        return product
 
     @staticmethod
     @transaction.atomic

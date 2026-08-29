@@ -274,3 +274,67 @@ class LingiTokenObtainPairSerializer(TokenObtainPairSerializer):
             "is_frozen": user.is_frozen,
         }
         return data
+
+
+class PhoneVerifySerializer(serializers.Serializer):
+    """Input for POST /api/v1/auth/verify-phone/."""
+
+    phone_number = serializers.CharField(max_length=15)
+
+
+class OtpConfirmSerializer(serializers.Serializer):
+    """Confirm a phone/email verification code."""
+
+    phone_number = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=10)
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    """Input for POST /api/v1/auth/password/reset/."""
+
+    phone_number = serializers.CharField(max_length=15)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Confirm password reset with OTP + new password."""
+
+    phone_number = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=10)
+    new_password = serializers.CharField(
+        write_only=True,
+        style={"input_type": "password"},
+        validators=[validate_password],
+    )
+    new_password_confirm = serializers.CharField(
+        write_only=True, style={"input_type": "password"}
+    )
+
+    def validate(self, data: dict) -> dict:
+        if data["new_password"] != data["new_password_confirm"]:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Passwords do not match."}
+            )
+        return data
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Input for POST /api/v1/auth/change-password/ (authenticated)."""
+
+    old_password = serializers.CharField(
+        write_only=True, style={"input_type": "password"}
+    )
+    new_password = serializers.CharField(
+        write_only=True,
+        style={"input_type": "password"},
+        validators=[validate_password],
+    )
+    new_password_confirm = serializers.CharField(
+        write_only=True, style={"input_type": "password"}
+    )
+
+    def validate(self, data: dict) -> dict:
+        if data["new_password"] != data["new_password_confirm"]:
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Passwords do not match."}
+            )
+        return data

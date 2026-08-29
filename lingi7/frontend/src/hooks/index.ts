@@ -165,10 +165,16 @@ export function useOrder(orderId: string | null): {
 /**
  * Polls payment status every 5 seconds while status is PENDING.
  * Automatically stops on SUCCESS or FAILED.
+ *
+ * Pass a changing `refreshToken` to force an immediate poll (e.g. right
+ * after the sandbox simulator approves/declines a payment).
  */
 export function usePaymentPoller(
   paymentId: string | null,
-  options?: { onTerminalFailure?: (message: string) => void }
+  options?: {
+    onTerminalFailure?: (message: string) => void;
+    refreshToken?: number;
+  }
 ): {
   attempt: PaymentAttempt | null;
   isPolling: boolean;
@@ -178,6 +184,7 @@ export function usePaymentPoller(
   const [isPolling, setIsPolling] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onFailure = options?.onTerminalFailure;
+  const refreshToken = options?.refreshToken;
 
   const stop = useCallback(() => {
     if (intervalRef.current) {
@@ -213,7 +220,7 @@ export function usePaymentPoller(
     intervalRef.current = setInterval(poll, 5_000);
 
     return stop;
-  }, [paymentId, stop, onFailure]);
+  }, [paymentId, stop, onFailure, refreshToken]);
 
   return { attempt, isPolling, stopPolling: stop };
 }

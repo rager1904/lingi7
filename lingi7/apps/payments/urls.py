@@ -10,7 +10,7 @@ Doc Ref: LG7-BE-005 v1.0
 """
 from django.urls import path
 
-from .views import PaymentInitiateView, PaymentStatusView
+from .views import PaymentInitiateView, PaymentSimulateView, PaymentStatusView
 from .webhooks import AirtelMoneyWebhookView, MTNMoMoWebhookView
 
 app_name = "payments"
@@ -21,6 +21,12 @@ urlpatterns = [
         "<uuid:payment_id>/status/",
         PaymentStatusView.as_view(),
         name="payment-status",
+    ),
+    # Sandbox-only helper — simulates USSD approve/decline (DEBUG-gated)
+    path(
+        "<uuid:payment_id>/simulate/",
+        PaymentSimulateView.as_view(),
+        name="payment-simulate",
     ),
     # Webhook receivers — no authentication, signature-validated internally
     path(

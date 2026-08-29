@@ -47,6 +47,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _format_zmw(amount: Decimal) -> str:
+    """Format an amount for user-facing notifications: 'ZMW 1,200.00'."""
+    return f"ZMW {amount:,.2f}"
+
+
 def _assert_can_transact(user: "User") -> None:
     """Defense-in-depth: BoZ KYC + AML freeze gate."""
     if not user.is_active:
@@ -231,6 +236,16 @@ class OrderService:
             note="Order submitted for payment.",
         )
 
+        from apps.notifications.tasks import dispatch_order_placed
+
+        transaction.on_commit(
+            lambda: dispatch_order_placed(
+                buyer_user_pk=order.buyer_id,
+                order_id=order.reference,
+                amount_display=_format_zmw(order.total_amount),
+            )
+        )
+
         logger.info("Order %s submitted → PENDING_PAYMENT", order.reference)
         return order
 
@@ -285,6 +300,16 @@ class OrderService:
             triggered_by=actor,
             note=f"Escrow hold confirmed. Payment attempt: {payment_attempt.idempotency_key}",
             metadata={"payment_attempt_id": str(payment_attempt.id)},
+        )
+
+        from apps.notifications.tasks import dispatch_payment_success
+
+        transaction.on_commit(
+            lambda: dispatch_payment_success(
+                buyer_user_pk=order.buyer_id,
+                order_id=order.reference,
+                amount_display=_format_zmw(order.total_amount),
+            )
         )
 
         logger.info("Order %s → PAYMENT_RECEIVED (escrow held)", order.reference)
@@ -367,6 +392,18 @@ class OrderService:
             triggered_by=actor,
             note=f"Shipped via {carrier}. Tracking: {tracking_number or 'N/A'}",
         )
+
+        from apps.notifications.tasks import dispatch_order_shipped
+
+        transaction.on_commit(
+            lambda: dispatch_order_shipped(
+                buyer_user_pk=order.buyer_id,
+                order_id=order.reference,
+                tracking_number=tracking_number,
+                carrier=carrier,
+            )
+        )
+
         return order
 
     # ─────────────── Confirm Delivery ────────────────────────────────────────
@@ -400,6 +437,16 @@ class OrderService:
             triggered_by=actor,
             note="Buyer confirmed delivery.",
         )
+
+        from apps.notifications.tasks import dispatch_order_delivered
+
+        transaction.on_commit(
+            lambda: dispatch_order_delivered(
+                buyer_user_pk=order.buyer_id,
+                order_id=order.reference,
+            )
+        )
+
         return order
 
     # ─────────────── Complete Order (Release Escrow) ──────────────────────────
@@ -438,6 +485,17 @@ class OrderService:
             to_status=OrderStatus.COMPLETED,
             triggered_by=actor,
             note="Order completed. Escrow released to seller.",
+        )
+
+        from apps.notifications.tasks import dispatch_escrow_released
+
+        transaction.on_commit(
+            lambda: dispatch_escrow_released(
+                vendor_user_pk=order.seller_id,
+                order_id=order.reference,
+                amount_display=_format_zmw(order.total_amount - order.platform_fee),
+                payout_account=getattr(order.seller, "phone_number", ""),
+            )
         )
 
         logger.info("Order %s COMPLETED — escrow released to seller", order.reference)
@@ -485,6 +543,22 @@ class OrderService:
             to_status=OrderStatus.CANCELLED,
             triggered_by=actor,
             note=reason or "Order cancelled.",
+        )
+
+        from apps.notifications.tasks import dispatch_order_cancelled
+
+        refund_status = (
+            "Refund will be processed to your original payment method."
+            if order.status is not None and order.escrow_account_id
+            else "No payment had been collected."
+        )
+        transaction.on_commit(
+            lambda: dispatch_order_cancelled(
+                buyer_user_pk=order.buyer_id,
+                order_id=order.reference,
+                amount_display=_format_zmw(order.total_amount),
+                refund_status=refund_status,
+            )
         )
 
         logger.info("Order %s CANCELLED by %s", order.reference, actor.id)

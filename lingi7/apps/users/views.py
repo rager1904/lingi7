@@ -42,13 +42,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .models import User
+from .models import User, VerificationPurpose
 from .permissions import IsAdmin, IsKYCVerified, IsNotFrozen
 from .serializers import (
+    ChangePasswordSerializer as ChangePasswordInputSerializer,
     KYCReviewSerializer as AdminKYCReviewSerializer,
     AdminUserDetailSerializer,
     KYCUploadSerializer,
     LingiTokenObtainPairSerializer,
+    OtpConfirmSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetSerializer,
+    PhoneVerifySerializer,
     RegisterSerializer,
     UserProfileSerializer,
     UserProfileUpdateSerializer,
@@ -60,6 +65,7 @@ from .services import (
     DuplicatePhoneError,
     InvalidKYCTransitionError,
     UserService,
+    VerificationService,
 )
 
 logger = logging.getLogger(__name__)
@@ -478,3 +484,195 @@ class AdminUnfreezeView(APIView):
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         return Response({"detail": "Account unfrozen successfully."})
+
+
+class PhoneVerifyView(APIView):
+    """
+    POST /api/v1/auth/verify-phone/
+
+    Open endpoint. Sends (or re-sends) a phone-verification OTP by SMS.
+    Always returns success so callers cannot probe for registered numbers.
+    """
+
+    permission_classes = []
+    throttle_scope = "registration"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = PhoneVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data["phone_number"]
+
+        user = VerificationService.find_by_phone(phone)
+        if user is not None and not user.is_frozen:
+            try:
+                VerificationService.send_phone_verify(user)
+            except Exception:
+                logger.exception("verify_phone.send_failed", extra={"phone": phone})
+
+        return Response(
+            {
+                "detail": (
+                    "If this phone number is registered, a verification code "
+                    "has been sent by SMS."
+                )
+            }
+        )
+
+
+class PhoneVerifyConfirmView(APIView):
+    """
+    POST /api/v1/auth/verify-phone/confirm/
+
+    Open endpoint. Confirms the OTP and marks the phone verified.
+    """
+
+    permission_classes = []
+    throttle_scope = "auth"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = OtpConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = VerificationService.find_by_phone(data["phone_number"])
+        if user is None:
+            return Response(
+                {"detail": "Invalid verification attempt.", "code": "invalid_code"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ok = VerificationService.confirm_code(
+            user=user,
+            purpose=VerificationPurpose.PHONE_VERIFY,
+            code=data["otp"],
+            target=user.phone_number,
+        )
+        if not ok:
+            return Response(
+                {"detail": "Invalid or expired code.", "code": "invalid_code"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {"detail": "Phone number verified successfully.", "phone_verified": True}
+        )
+
+
+class PasswordResetView(APIView):
+    """
+    POST /api/v1/auth/password/reset/
+
+    Open endpoint. Sends a password-reset code by email (if the user has
+    one) or SMS. Always returns success to avoid user enumeration.
+    """
+
+    permission_classes = []
+    throttle_scope = "registration"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data["phone_number"]
+
+        user = VerificationService.find_by_phone(phone)
+        if user is not None and user.is_active and not user.is_frozen:
+            try:
+                VerificationService.send_password_reset(user)
+            except Exception:
+                logger.exception("password_reset.send_failed", extra={"phone": phone})
+
+        return Response(
+            {
+                "detail": (
+                    "If this phone number is registered, a password reset code "
+                    "has been sent to your email or phone."
+                )
+            }
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """
+    POST /api/v1/auth/password/reset/confirm/
+
+    Open endpoint. Confirms the reset OTP and sets a new password.
+    Body: {"phone_number", "otp", "new_password", "new_password_confirm"}
+    """
+
+    permission_classes = []
+    throttle_scope = "auth"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = VerificationService.find_by_phone(data["phone_number"])
+        if user is None:
+            return Response(
+                {"detail": "Invalid reset code.", "code": "invalid_code"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.is_active or user.is_frozen:
+            return Response(
+                {"detail": "This account cannot reset its password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ok = VerificationService.confirm_code(
+            user=user,
+            purpose=VerificationPurpose.PASSWORD_RESET,
+            code=data["otp"],
+        )
+        if not ok:
+            return Response(
+                {"detail": "Invalid or expired code.", "code": "invalid_code"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(data["new_password"])
+        user.save(update_fields=["password"])
+
+        from apps.notifications.tasks import dispatch_password_changed
+
+        dispatch_password_changed(user_pk=str(user.id))
+
+        return Response({"detail": "Password reset successfully."})
+
+
+class ChangePasswordView(APIView):
+    """
+    POST /api/v1/auth/change-password/
+
+    Authenticated. Changes the password after verifying the current one.
+    Body: {"old_password", "new_password", "new_password_confirm"}
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "auth"
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = ChangePasswordInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        if not request.user.check_password(data["old_password"]):
+            return Response(
+                {"detail": "Your current password is incorrect.", "code": "invalid_password"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(data["new_password"])
+        request.user.save(update_fields=["password"])
+
+        from apps.notifications.tasks import dispatch_password_changed
+
+        dispatch_password_changed(user_pk=str(request.user.id))
+
+        return Response({"detail": "Password changed successfully."})

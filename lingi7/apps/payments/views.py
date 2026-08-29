@@ -9,9 +9,10 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 
 from apps.users.permissions import CanTransact
@@ -123,6 +124,82 @@ class PaymentStatusView(APIView):
                 "amount_zmw": str(attempt.amount),
                 "external_reference": attempt.provider_reference or None,
                 "created_at": attempt.created_at.isoformat(),
+            }
+        )
+
+
+class PaymentSimulateView(APIView):
+    """POST /api/v1/payments/<uuid:payment_id>/simulate/
+
+    Sandbox-only helper: simulates the buyer approving or declining the
+    USSD payment prompt so the full checkout flow can be tested without
+    a real phone. Disabled whenever DEBUG is False (production).
+
+    The result is applied through PaymentService.process_webhook() so the
+    simulate path exercises the exact same state transitions, idempotency,
+    audit trail, and escrow-hold dispatch as a real provider webhook.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = []  # Disable throttling for sandbox simulation
+
+    def post(self, request: Request, payment_id: str) -> Response:
+        if not settings.DEBUG:
+            raise PermissionDenied(
+                {"detail": "Payment simulation is only available in sandbox mode."}
+            )
+
+        action = str(request.data.get("action", "")).upper()
+        if action not in ("APPROVE", "DECLINE"):
+            raise ValidationError({"action": "action must be APPROVE or DECLINE."})
+
+        attempt = get_object_or_404(
+            PaymentAttempt,
+            pk=payment_id,
+            initiated_by=request.user,
+        )
+
+        if attempt.status != PaymentAttempt.Status.PENDING:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "Payment is not awaiting approval "
+                        f"(current status: {_public_status(attempt.status)})."
+                    )
+                }
+            )
+
+        if not attempt.provider_reference:
+            raise ValidationError(
+                {"detail": "Payment attempt has no provider reference to simulate."}
+            )
+
+        event_type = "SUCCESSFUL" if action == "APPROVE" else "FAILED"
+
+        PaymentService.process_webhook(
+            provider=attempt.provider,
+            provider_reference=attempt.provider_reference,
+            event_type=event_type,
+            payload={
+                "status": event_type,
+                "externalId": attempt.provider_reference,
+                "simulated": True,
+            },
+            headers={},
+            signature_valid=True,
+        )
+
+        attempt.refresh_from_db()
+
+        return Response(
+            {
+                "payment_id": str(attempt.id),
+                "status": _public_status(attempt.status),
+                "message": (
+                    "Payment approved. Funds will be held in escrow."
+                    if action == "APPROVE"
+                    else "Payment was declined."
+                ),
             }
         )
 

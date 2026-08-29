@@ -83,7 +83,11 @@ class NotificationEventType(models.TextChoices):
     # Account
     WELCOME = "WELCOME", "Welcome to Lingi7"
     PASSWORD_RESET = "PASSWORD_RESET", "Password Reset"
+    PASSWORD_CHANGED = "PASSWORD_CHANGED", "Password Changed"
     LOGIN_OTP = "LOGIN_OTP", "Login OTP"
+
+    # Ops (no user-facing template — internal alerts only)
+    INTERNAL_ALERT = "INTERNAL_ALERT", "Internal Alert"
 
 
 class NotificationLog(models.Model):

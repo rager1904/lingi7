@@ -7,7 +7,9 @@ Handles Collections (buyer payments) and Disbursements (vendor payouts).
 API Reference: https://momodeveloper.mtn.com/
 Sandbox: https://sandbox.momodeveloper.mtn.com/
 
-All amounts in ZMW (Zambian Kwacha). MSISDN format: 260XXXXXXXXX (no +).
+MSISDN format: 260XXXXXXXXX (no +). Currency is injected per environment:
+EUR on the MTN sandbox (which rejects all country currencies), ZMW and other
+supported currencies in production.
 
 Doc Ref: LG7-BE-005 v1.0
 """
@@ -36,7 +38,7 @@ class MTNPaymentResult:
     """Immutable result from any MTN MoMo API call."""
 
     success: bool
-    provider_reference: str  # MTN's financialTransactionId
+    provider_reference: str  # Our X-Reference-Id (= externalId echoed by webhook)
     status: str  # RAW provider status string
     response_code: str
     raw_response: dict[str, Any]
@@ -60,9 +62,15 @@ class MTNMoMoClient:
         )
     """
 
-    # MTN API v2 base paths
-    _COLLECTION_BASE = "/collection/v1_0"
-    _DISBURSEMENT_BASE = "/disbursement/v1_0"
+    # MTN MoMo v2 base paths.
+    # NOTE: the OAuth token endpoint is served at the PRODUCT ROOT without the
+    # /v1_0 segment — the live gateway answers /collection/token/ and
+    # /disbursement/token/ (verified against sandbox.momodeveloper.mtn.com),
+    # while /collection/v1_0/token/ returns 404 "Resource not found".
+    _COLLECTION_BASE = "/collection/v1_0"            # requestToPay + status polling
+    _DISBURSEMENT_BASE = "/disbursement/v1_0"        # transfer
+    _COLLECTION_TOKEN_BASE = "/collection"
+    _DISBURSEMENT_TOKEN_BASE = "/disbursement"
     _TOKEN_PATH = "/token/"
 
     # MTN sandbox host
@@ -76,6 +84,8 @@ class MTNMoMoClient:
         disbursement_api_key: str,
         disbursement_user_id: str,
         subscription_key: str,
+        disbursement_subscription_key: str | None = None,
+        currency: str = "ZMW",
         environment: MTNEnvironment = MTNEnvironment.SANDBOX,
         base_url: str | None = None,
         callback_url: str | None = None,
@@ -86,6 +96,13 @@ class MTNMoMoClient:
         self._disbursement_api_key = disbursement_api_key
         self._disbursement_user_id = disbursement_user_id
         self._subscription_key = subscription_key
+        # MTN issues a separate Ocp-Apim-Subscription-Key per product
+        # (collection, disbursement). Fall back to the collection key if the
+        # user has not provided a dedicated disbursement one.
+        self._disbursement_subscription_key = (
+            disbursement_subscription_key or subscription_key
+        )
+        self._currency = currency
         self._environment = environment
         self._base_url = base_url or self._SANDBOX_HOST
         self._callback_url = callback_url
@@ -116,12 +133,25 @@ class MTNMoMoClient:
         env_str = getattr(settings, "MTN_MOMO_ENVIRONMENT", "sandbox")
         env = MTNEnvironment(env_str)
 
+        # MTN sandbox ONLY supports EUR — country currencies (ZMW, UGX, ...)
+        # work exclusively in production and return INVALID_CURRENCY (HTTP 500)
+        # against sandbox.momodeveloper.mtn.com. Force EUR so the sandbox flow
+        # works out of the box; production uses the configured MTN_MOMO_CURRENCY.
+        currency = getattr(settings, "MTN_MOMO_CURRENCY", "ZMW")
+        if env == MTNEnvironment.SANDBOX:
+            currency = "EUR"
+
         return cls(
             collection_api_key=settings.MTN_MOMO_COLLECTION_API_KEY,
             collection_user_id=settings.MTN_MOMO_COLLECTION_USER_ID,
             disbursement_api_key=settings.MTN_MOMO_DISBURSEMENT_API_KEY,
             disbursement_user_id=settings.MTN_MOMO_DISBURSEMENT_USER_ID,
             subscription_key=settings.MTN_MOMO_SUBSCRIPTION_KEY,
+            disbursement_subscription_key=(
+                getattr(settings, "MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY", "")
+                or settings.MTN_MOMO_SUBSCRIPTION_KEY
+            ),
+            currency=currency,
             environment=env,
             base_url=getattr(settings, "MTN_MOMO_BASE_URL", None),
             callback_url=getattr(settings, "MTN_MOMO_CALLBACK_URL", None),
@@ -136,9 +166,10 @@ class MTNMoMoClient:
         if self._collection_token:
             return self._collection_token
         self._collection_token = self._fetch_token(
-            product_path=self._COLLECTION_BASE,
+            product_path=self._COLLECTION_TOKEN_BASE,
             api_user_id=self._collection_user_id,
             api_key=self._collection_api_key,
+            subscription_key=self._subscription_key,
         )
         return self._collection_token
 
@@ -147,9 +178,10 @@ class MTNMoMoClient:
         if self._disbursement_token:
             return self._disbursement_token
         self._disbursement_token = self._fetch_token(
-            product_path=self._DISBURSEMENT_BASE,
+            product_path=self._DISBURSEMENT_TOKEN_BASE,
             api_user_id=self._disbursement_user_id,
             api_key=self._disbursement_api_key,
+            subscription_key=self._disbursement_subscription_key,
         )
         return self._disbursement_token
 
@@ -158,6 +190,7 @@ class MTNMoMoClient:
         product_path: str,
         api_user_id: str,
         api_key: str,
+        subscription_key: str,
     ) -> str:
         """POST to /token/ and return the access_token string."""
         url = f"{self._base_url}{product_path}{self._TOKEN_PATH}"
@@ -167,7 +200,7 @@ class MTNMoMoClient:
                     url,
                     auth=(api_user_id, api_key),
                     headers={
-                        "Ocp-Apim-Subscription-Key": self._subscription_key,
+                        "Ocp-Apim-Subscription-Key": subscription_key,
                         "Content-Type": "application/json",
                     },
                 )
@@ -193,7 +226,7 @@ class MTNMoMoClient:
             "Authorization": f"Bearer {self._get_disbursement_token()}",
             "X-Reference-Id": reference_id,
             "X-Target-Environment": self._environment.value,
-            "Ocp-Apim-Subscription-Key": self._subscription_key,
+            "Ocp-Apim-Subscription-Key": self._disbursement_subscription_key,
             "Content-Type": "application/json",
         }
 
@@ -214,7 +247,8 @@ class MTNMoMoClient:
         Initiate a collection (buyer pays via USSD prompt).
 
         Args:
-            amount: Payment amount in ZMW. Must be > 0.
+            amount: Payment amount. Currency is client-injected (EUR on sandbox,
+                settings.MTN_MOMO_CURRENCY on production).
             payer_msisdn: Buyer's phone without +. E.g. "260971234567".
             reference: Platform order/escrow reference. Shown to payer.
             message: Description shown in USSD prompt. Max 50 chars.
@@ -229,8 +263,11 @@ class MTNMoMoClient:
 
         payload: dict[str, Any] = {
             "amount": str(amount),
-            "currency": "ZMW",
-            "externalId": reference,
+            "currency": self._currency,
+            # externalId must equal the X-Reference-Id so the inbound webhook
+            # (which echoes externalId + financialTransactionId, but NOT the
+            # request header) can be correlated to the stored PaymentAttempt.
+            "externalId": ref_id,
             "payer": {
                 "partyIdType": "MSISDN",
                 "partyId": payer_msisdn,
@@ -400,8 +437,9 @@ class MTNMoMoClient:
 
         payload: dict[str, Any] = {
             "amount": str(amount),
-            "currency": "ZMW",
-            "externalId": reference,
+            "currency": self._currency,
+            # Match X-Reference-Id so inbound webhook correlates to the attempt
+            "externalId": ref_id,
             "payee": {
                 "partyIdType": "MSISDN",
                 "partyId": payee_msisdn,

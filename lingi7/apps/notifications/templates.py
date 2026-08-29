@@ -242,6 +242,17 @@ def _t_order_delivered_plain(ctx: dict) -> str:
     )
 
 
+def _t_order_cancelled_plain(ctx: dict) -> str:
+    order_id = ctx.get("order_id", "")
+    amount = ctx.get("amount", "")
+    refund = ctx.get("refund_status", "")
+    return (
+        f"Lingi7: Order #{order_id} was cancelled. "
+        f"Amount {amount} {refund}. Visit {_PLATFORM_URL}/orders/{order_id} "
+        f"for details."
+    )
+
+
 def _t_escrow_released_plain(ctx: dict) -> str:
     order_id = ctx.get("order_id", "")
     amount = ctx.get("amount", "")
@@ -358,11 +369,56 @@ def _t_kyc_rejected_plain(ctx: dict) -> str:
 
 
 def _t_password_reset_plain(ctx: dict) -> str:
-    reset_url = ctx.get("reset_url", _PLATFORM_URL)
+    reset_url = ctx.get("reset_url", "")
+    otp = ctx.get("otp", "")
+    if otp:
+        return (
+            f"Lingi7: You requested a password reset. Your code is {otp}. "
+            f"It expires in 10 minutes. If you did not request this, ignore "
+            f"this message and contact support."
+        )
     return (
         f"Lingi7: You requested a password reset. "
         f"Click here to reset: {reset_url} "
         f"This link expires in 1 hour. If you did not request this, ignore this message."
+    )
+
+
+def _t_password_reset_html(ctx: dict) -> str:
+    otp = _esc(ctx.get("otp", ""))
+    name = _esc(ctx.get("name", "there"))
+    return _html_wrap(
+        "Reset Your Lingi7 Password",
+        f"""<h2>Password Reset Request</h2>
+        <p>Hi {name}, someone requested a password reset for this account.</p>
+        <div class="highlight-box">
+          <p>Your verification code is:</p>
+          <div class="amount">{otp}</div>
+          <p>This code expires in 10 minutes.</p>
+        </div>
+        <p>If you did not request this, please ignore this email and
+           contact {_SUPPORT_EMAIL} if you believe your account is at risk.</p>""",
+    )
+
+
+def _t_password_changed_plain(ctx: dict) -> str:
+    return (
+        f"Lingi7: Your password was changed on {ctx.get('changed_at', 'today')}. "
+        f"If this was not you, contact {_SUPPORT_EMAIL} immediately."
+    )
+
+
+def _t_password_changed_html(ctx: dict) -> str:
+    from django.utils import timezone
+    changed_at = _esc(ctx.get("changed_at", timezone.now().strftime("%Y-%m-%d %H:%M")))
+    return _html_wrap(
+        "Your Password Was Changed",
+        f"""<h2>Password Changed</h2>
+        <p>Your Lingi7 account password was successfully changed on
+           <strong>{changed_at}</strong>.</p>
+        <p>If you did not make this change, please contact {_SUPPORT_EMAIL}
+           immediately and reset your password.</p>
+        <a href="{_PLATFORM_URL}/auth/login" class="cta-button">Log In</a>""",
     )
 
 
@@ -371,6 +427,20 @@ def _t_login_otp_plain(ctx: dict) -> str:
     return (
         f"Lingi7: Your verification code is {otp}. "
         f"It expires in 10 minutes. Do not share this code with anyone."
+    )
+
+
+def _t_login_otp_html(ctx: dict) -> str:
+    otp = _esc(ctx.get("otp", ""))
+    name = _esc(ctx.get("name", "there"))
+    return _html_wrap(
+        "Your Lingi7 Verification Code",
+        f"""<h2>Hi {name},</h2>
+        <p>Use the verification code below to continue:</p>
+        <div class="highlight-box">
+          <div class="amount">{otp}</div>
+          <p>This code expires in 10 minutes. Never share it with anyone.</p>
+        </div>""",
     )
 
 
@@ -448,6 +518,7 @@ _sms_map = [
     (E.ORDER_PLACED, _t_order_placed_plain),
     (E.ORDER_SHIPPED, _t_order_shipped_plain),
     (E.ORDER_DELIVERED, _t_order_delivered_plain),
+    (E.ORDER_CANCELLED, _t_order_cancelled_plain),
     (E.ORDER_AUTO_CONFIRMED, _t_order_auto_confirmed_plain),
     (E.ESCROW_RELEASED, _t_escrow_released_plain),
     (E.ESCROW_FROZEN, _t_escrow_frozen_plain),
@@ -461,6 +532,7 @@ _sms_map = [
     (E.KYC_APPROVED, _t_kyc_approved_plain),
     (E.KYC_REJECTED, _t_kyc_rejected_plain),
     (E.PASSWORD_RESET, _t_password_reset_plain),
+    (E.PASSWORD_CHANGED, _t_password_changed_plain),
     (E.LOGIN_OTP, _t_login_otp_plain),
 ]
 
@@ -498,6 +570,12 @@ _email_map = [
         E.ORDER_DELIVERED,
         lambda ctx: f"Confirm Delivery — Order #{ctx.get('order_id', '')}",
         _t_order_delivered_plain,
+        None,
+    ),
+    (
+        E.ORDER_CANCELLED,
+        lambda ctx: f"Order #{ctx.get('order_id', '')} Cancelled",
+        _t_order_cancelled_plain,
         None,
     ),
     (
@@ -546,7 +624,19 @@ _email_map = [
         E.PASSWORD_RESET,
         lambda ctx: "Reset Your Lingi7 Password",
         _t_password_reset_plain,
-        None,
+        _t_password_reset_html,
+    ),
+    (
+        E.PASSWORD_CHANGED,
+        lambda ctx: "Your Lingi7 Password Was Changed",
+        _t_password_changed_plain,
+        _t_password_changed_html,
+    ),
+    (
+        E.LOGIN_OTP,
+        lambda ctx: "Your Lingi7 Verification Code",
+        _t_login_otp_plain,
+        _t_login_otp_html,
     ),
 ]
 

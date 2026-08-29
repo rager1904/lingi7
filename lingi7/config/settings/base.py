@@ -259,11 +259,35 @@ CELERY_TASK_ROUTES = {
     "apps.fraud.tasks.*":         {"queue": "fraud"},
 }
 
-# Beat schedule — populated by django_celery_beat via admin/migrations
-# Do not define static schedule here; use the DB-backed scheduler.
+# ── Beat schedule ─────────────────────────────────────────────────────────────
+# DB-backed scheduler is authoritative: entries created via Django admin /
+# django_celery_beat win. Static entries below are merged in as a fallback so
+# the payment safety nets run even on an empty database.
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
+CELERY_BEAT_SCHEDULE = {
+    # Poll PENDING payments so sandbox/dev flows confirm without a webhook
+    "sweep-pending-payments": {
+        "task": "payments.sweep_pending_payment_statuses",
+        "schedule": 300.0,  # every 5 minutes
+    },
+    "retry-dead-lettered-webhooks": {
+        "task": "payments.retry_dead_letters",
+        "schedule": 300.0,  # every 5 minutes
+    },
+}
+
 # ── Email ─────────────────────────────────────────────────────────────────────
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND",
+    default="apps.notifications.email_backends.brevo.BrevoEmailBackend",
+)
+BREVO_API_KEY = config("BREVO_API_KEY", default="")
+EMAIL_HOST = config("EMAIL_HOST", default="smtp-relay.brevo.com")
+EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@lingi7.co.zm")
 SERVER_EMAIL = config("SERVER_EMAIL", default="noreply@lingi7.co.zm")
 
@@ -335,9 +359,17 @@ MTN_MOMO_COLLECTION_USER_ID = config("MTN_MOMO_COLLECTION_USER_ID", default="")
 MTN_MOMO_COLLECTION_API_KEY = config("MTN_MOMO_COLLECTION_API_KEY", default="")
 MTN_MOMO_DISBURSEMENT_USER_ID = config("MTN_MOMO_DISBURSEMENT_USER_ID", default="")
 MTN_MOMO_DISBURSEMENT_API_KEY = config("MTN_MOMO_DISBURSEMENT_API_KEY", default="")
+# MTN issues a separate Ocp-Apim-Subscription-Key per product. If unset,
+# the collection subscription key is reused (see MTNMoMoClient.from_settings).
+MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY = config(
+    "MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY", default=""
+)
 MTN_MOMO_ENVIRONMENT = config("MTN_MOMO_ENVIRONMENT", default="sandbox")
 MTN_MOMO_CURRENCY = config("MTN_MOMO_CURRENCY", default="ZMW")
 MTN_MOMO_CALLBACK_URL = config("MTN_MOMO_CALLBACK_URL", default="")
+# Static token MTN sends in the X-Callback-Token header on every webhook.
+# Set this to the callback token assigned to your API user in the MoMo portal.
+MTN_MOMO_CALLBACK_TOKEN = config("MTN_MOMO_CALLBACK_TOKEN", default="")
 
 # Airtel Money
 AIRTEL_BASE_URL = config("AIRTEL_BASE_URL", default="https://openapiuat.airtel.africa")

@@ -3,12 +3,11 @@ Notification Providers — apps/notifications/providers.py
 
 Thin client wrappers for each transport channel.
 
-Africa's Talking is the recommended SMS gateway for Zambia: it has
-direct operator connections to MTN Zambia and Airtel Zambia and supports
-both the ZMW-based pricing and ZM shortcodes.
-
-For email, AWS SES is the primary provider (configured via boto3).
-Django's built-in SMTP backend is used as fallback in dev/test.
+Email:   Brevo Transactional Email API via apps.notifications.email_backends.
+SMS:     Brevo Transactional SMS API (primary) with Africa's Talking as an
+         alternative gateway for Zambia (MTN/Airtel direct operator
+         connections). Falls back to a console logger in DEBUG mode so tests
+         and local dev do not require live credentials.
 
 No business logic lives here. Each provider raises NotificationSendError
 on failure — the service layer handles retry decisions.
@@ -18,7 +17,10 @@ Document Ref: LG7-BE-012
 
 from __future__ import annotations
 
+import json
 import logging
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
@@ -26,6 +28,101 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 
 logger = logging.getLogger(__name__)
+
+BREVO_SMS_ENDPOINT = "https://api.brevo.com/v3/transactionalSMS/sms"
+
+
+class DebugSMSProvider:
+    """
+    Fallback SMS provider that only logs the message.
+
+    Used automatically when no live SMS gateway is configured (dev/test).
+    """
+
+    def send(self, phone_number: str, message: str) -> "SendResult":
+        logger.info(
+            "[SMS-DEBUG] To: %s | Body: %s", phone_number, message
+        )
+        return SendResult(success=True, provider_ref="DEBUG-SMS-REF")
+
+
+class BrevoSMSProvider:
+    """
+    SMS provider using the Brevo Transactional SMS API v3.
+
+    Credentials are read from Django settings:
+
+        BREVO_API_KEY:    Brevo API key starting with "xkeysib-".
+        BREVO_SMS_SENDER: Registered SMS sender ID (e.g. 'LINGI7').
+                          Must be added under Brevo SMS > Senders.
+
+    Uses the same key as the Transactional Email API — no IP restriction.
+    """
+
+    def __init__(self) -> None:
+        self.api_key: str = getattr(settings, "BREVO_API_KEY", "")
+        self.sender_id: str = getattr(settings, "BREVO_SMS_SENDER", "")
+        self.debug_mode: bool = bool(
+            getattr(settings, "NOTIFICATIONS_DEBUG_MODE", False)
+        )
+
+    def send(self, phone_number: str, message: str) -> "SendResult":
+        """Send an SMS via the Brevo Transactional SMS API.
+
+        Args:
+            phone_number: E.164 format, e.g. +260971234567
+            message:      Plain text body.
+
+        Returns:
+            SendResult with provider ref (Brevo messageId) on success.
+        """
+        if self.debug_mode:
+            return DebugSMSProvider().send(phone_number, message)
+
+        if not self.api_key or not self.sender_id:
+            return SendResult(
+                success=False,
+                error=(
+                    "Brevo SMS not configured: set BREVO_API_KEY and "
+                    "BREVO_SMS_SENDER."
+                ),
+            )
+
+        payload = {
+            "type": "transactional",
+            "unicodeEnabled": True,
+            "sender": self.sender_id,
+            "recipient": phone_number,
+            "content": message,
+        }
+        request = urllib.request.Request(
+            BREVO_SMS_ENDPOINT,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "api-key": self.api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                body = json.loads(response.read().decode("utf-8"))
+                message_id = body.get("messageId", "")
+                logger.info(
+                    "Brevo SMS accepted for %s [%s]", phone_number, message_id
+                )
+                return SendResult(success=True, provider_ref=message_id)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            logger.error("Brevo SMS API error %s: %s", exc.code, detail)
+            return SendResult(
+                success=False,
+                error=f"Brevo SMS API returned {exc.code}: {detail}",
+            )
+        except Exception as exc:
+            logger.exception("Unexpected Brevo SMS error for %s", phone_number)
+            return SendResult(success=False, error=str(exc))
 
 
 class NotificationSendError(Exception):

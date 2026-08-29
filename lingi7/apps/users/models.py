@@ -15,6 +15,10 @@ Design decisions:
 """
 
 import uuid
+import hashlib
+import secrets
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -287,3 +291,141 @@ class User(AbstractBaseUser, PermissionsMixin):
         before any escrow or payment operation is allowed.
         """
         return self.is_active and self.is_kyc_verified and not self.is_frozen
+
+
+class VerificationPurpose(models.TextChoices):
+    """Short-lived one-time code purposes."""
+
+    PHONE_VERIFY = "PHONE_VERIFY", _("Phone verification")
+    EMAIL_VERIFY = "EMAIL_VERIFY", _("Email verification")
+    LOGIN_OTP = "LOGIN_OTP", _("Login OTP")
+    PASSWORD_RESET = "PASSWORD_RESET", _("Password reset")
+
+
+class VerificationCode(models.Model):
+    """
+    One-time verification code (OTP) for phone/email verification and
+    password reset.
+
+    Codes are 6 digits, valid for 10 minutes, and stored hashed
+    (SHA-256) — never in plaintext. Brute force is limited by
+    attempt_count (max 5 per code).
+
+    Fields:
+        user:       The User this code belongs to.
+        purpose:    VerificationPurpose value.
+        channel:    Delivery channel (EMAIL | SMS).
+        target:     Address the code was sent to (email or phone).
+        expires_at: Code expiry timestamp (default 10 minutes).
+        consumed:   True once successfully verified.
+        attempt_count: Failed verification attempts against this code.
+    """
+
+    MAX_ATTEMPTS = 5
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="verification_codes",
+    )
+
+    purpose = models.CharField(
+        max_length=20,
+        choices=VerificationPurpose.choices,
+        db_index=True,
+    )
+    channel = models.CharField(
+        max_length=10,
+        choices=[("EMAIL", "Email"), ("SMS", "SMS")],
+    )
+    target = models.CharField(max_length=320)
+
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed = models.BooleanField(default=False, db_index=True)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "purpose", "consumed"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.purpose} → {self.target} (consumed={self.consumed})"
+
+    # ------------------------------------------------------------------ #
+    # Code helpers                                                        #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _hash(code: str) -> str:
+        return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_valid(self) -> bool:
+        return (
+            not self.consumed
+            and not self.is_expired
+            and self.attempt_count < self.MAX_ATTEMPTS
+        )
+
+    @classmethod
+    def create_code(
+        cls,
+        *,
+        user: "User",
+        purpose: str,
+        channel: str,
+        target: str,
+        ttl_seconds: int = 600,
+    ) -> tuple["VerificationCode", str]:
+        """Generate a new verification code and invalidate prior ones.
+
+        Returns:
+            (VerificationCode instance, plaintext code). The plaintext
+            code is only available at creation time — it is never stored.
+        """
+        code = f"{secrets.randbelow(1000000):06d}"
+
+        # Invalidate any outstanding codes for the same purpose + channel
+        cls.objects.filter(
+            user=user,
+            purpose=purpose,
+            channel=channel,
+            consumed=False,
+        ).update(consumed=True)
+
+        instance = cls.objects.create(
+            user=user,
+            purpose=purpose,
+            channel=channel,
+            target=target,
+            code_hash=cls._hash(code),
+            expires_at=timezone.now() + timedelta(seconds=ttl_seconds),
+        )
+        return instance, code
+
+    def check_code(self, code: str) -> bool:
+        """Verify the supplied code. Consumes it on success.
+
+        Returns:
+            True if the code matches and is still valid.
+        """
+        if not self.is_valid:
+            return False
+        if not secrets.compare_digest(self.code_hash, self._hash(code)):
+            self.attempt_count += 1
+            self.save(update_fields=["attempt_count"])
+            return False
+        self.consumed = True
+        self.save(update_fields=["consumed"])
+        return True

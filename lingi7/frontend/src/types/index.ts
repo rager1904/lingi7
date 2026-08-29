@@ -235,6 +235,14 @@ export interface PaymentInitiateResponse {
   message: string;
 }
 
+export type PaymentSimulateAction = "APPROVE" | "DECLINE";
+
+export interface PaymentSimulateResponse {
+  payment_id: string;
+  status: PaymentStatus;
+  message: string;
+}
+
 // ─── Shipment & Tracking ─────────────────────────────────────────────────────
 
 export type ShipmentStatus =

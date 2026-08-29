@@ -178,8 +178,11 @@ class MTNMoMoWebhookView(View):
         #   "payeeNote": "...",
         #   "status": "SUCCESSFUL"
         # }
-        provider_reference = payload.get("financialTransactionId") or payload.get(
-            "externalId", ""
+        # externalId is our X-Reference-Id (stored as PaymentAttempt.provider_reference),
+        # so prefer it for correlation. financialTransactionId is MTN's own number
+        # and is NOT stored on the attempt.
+        provider_reference = payload.get("externalId") or payload.get(
+            "financialTransactionId", ""
         )
         event_type = payload.get("status", "UNKNOWN")
 

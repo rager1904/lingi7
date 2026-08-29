@@ -46,7 +46,10 @@ AWS_QUERYSTRING_EXPIRE = 3600           # 1 hour for signed URLs
 # AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
 
 # ── Email ─────────────────────────────────────────────────────────────────────
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="apps.notifications.email_backends.brevo.BrevoEmailBackend",
+)
 EMAIL_HOST = env("EMAIL_HOST")
 EMAIL_PORT = env("EMAIL_PORT", default=587, cast=int)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER")

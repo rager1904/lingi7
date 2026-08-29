@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import (
@@ -32,7 +33,12 @@ from .models import (
     NotificationLog,
     NotificationStatus,
 )
-from .providers import AfricasTalkingSMSProvider, DjangoEmailProvider
+from .providers import (
+    AfricasTalkingSMSProvider,
+    BrevoSMSProvider,
+    DebugSMSProvider,
+    DjangoEmailProvider,
+)
 from .templates import NotificationTemplate, TemplateRegistry
 
 logger = logging.getLogger(__name__)
@@ -67,8 +73,24 @@ class NotificationService:
 
     @classmethod
     def _get_sms_provider(cls):
+        """Resolve the active SMS provider.
+
+        Priority:
+          1. Brevo Transactional SMS (when BREVO_API_KEY and BREVO_SMS_SENDER set)
+          2. Africa's Talking (when AT_API_KEY set)
+          3. Debug console logger (dev/test — never fails)
+        """
         if not hasattr(cls, "_sms_provider"):
-            cls._sms_provider = AfricasTalkingSMSProvider()
+            if getattr(settings, "BREVO_API_KEY", "") and getattr(
+                settings, "BREVO_SMS_SENDER", ""
+            ):
+                cls._sms_provider = BrevoSMSProvider()
+            elif getattr(settings, "AT_API_KEY", "") and not getattr(
+                settings, "NOTIFICATIONS_DEBUG_MODE", False
+            ):
+                cls._sms_provider = AfricasTalkingSMSProvider()
+            else:
+                cls._sms_provider = DebugSMSProvider()
         return cls._sms_provider
 
     @classmethod
@@ -151,6 +173,56 @@ class NotificationService:
             logger.exception(
                 "Unexpected SMS error | event=%s | to=%s", event_type, phone_number
             )
+
+        return log
+
+    @classmethod
+    def send_alert_sms(
+        cls,
+        phone_number: str,
+        body: str,
+        recipient: Optional[Any] = None,
+        related_object_id: str = "",
+        related_object_type: str = "",
+    ) -> Optional[NotificationLog]:
+        """Dispatch a raw (template-less) SMS alert — internal ops only.
+
+        Used for operational alerts (SLA breaches, payment delays, etc.)
+        where no user-facing event template exists. Logs every alert the
+        same way as templated messages.
+        """
+        log = NotificationLog.objects.create(
+            recipient=recipient,
+            channel=NotificationChannel.SMS,
+            event_type=NotificationEventType.INTERNAL_ALERT,
+            recipient_address=phone_number,
+            subject="",
+            body_plain=body,
+            status=NotificationStatus.PENDING,
+            context_data={},
+            related_object_id=related_object_id,
+            related_object_type=related_object_type,
+        )
+
+        try:
+            result = cls._get_sms_provider().send(phone_number=phone_number, message=body)
+            if result.success:
+                log.mark_sent(provider_ref=result.provider_ref)
+                logger.info(
+                    "Alert SMS sent | to=%s | ref=%s",
+                    phone_number,
+                    result.provider_ref,
+                )
+            else:
+                log.mark_failed(error=result.error)
+                logger.warning(
+                    "Alert SMS failed | to=%s | error=%s",
+                    phone_number,
+                    result.error,
+                )
+        except Exception as exc:
+            log.mark_failed(error=str(exc))
+            logger.exception("Unexpected alert SMS error | to=%s", phone_number)
 
         return log
 

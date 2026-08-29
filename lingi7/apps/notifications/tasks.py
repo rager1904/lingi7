@@ -228,6 +228,56 @@ def notify_user_task(
 # ---------------------------------------------------------------------------
 
 
+def dispatch_registration(user_pk: int) -> None:
+    """Fire WELCOME (SMS + email) and auto-send a phone verification OTP."""
+    registration_notifications.delay(user_pk=user_pk)
+
+
+@shared_task(
+    bind=True,
+    name="notifications.registration",
+    queue="notifications",
+)
+def registration_notifications(self, user_pk: int) -> None:
+    """Send welcome notifications and phone-verification OTP after signup.
+
+    Runs as a Celery task so registration is never blocked on the
+    notification providers (in dev this executes inline via
+    CELERY_TASK_ALWAYS_EAGER).
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=user_pk)
+    except User.DoesNotExist:
+        logger.error("registration_notifications: user pk=%s not found", user_pk)
+        return
+
+    context = {"name": user.first_name or "there"}
+    NotificationService.notify_user(
+        user=user,
+        event_type=NotificationEventType.WELCOME,
+        context=context,
+    )
+
+    try:
+        from apps.users.services import VerificationService
+
+        VerificationService.send_phone_verify(user)
+    except Exception:
+        logger.exception("registration_notifications: phone OTP failed for %s", user_pk)
+
+
+def dispatch_password_changed(user_pk: int) -> None:
+    """Fire PASSWORD_CHANGED confirmation (email + SMS)."""
+    notify_user_task.delay(
+        user_pk=user_pk,
+        event_type=NotificationEventType.PASSWORD_CHANGED,
+        context={},
+    )
+
+
 def dispatch_order_placed(
     buyer_user_pk: int,
     order_id: str,
@@ -272,6 +322,41 @@ def dispatch_order_shipped(
             "order_id": order_id,
             "tracking_number": tracking_number,
             "carrier": carrier,
+        },
+        related_object_id=order_id,
+        related_object_type="orders.Order",
+    )
+
+
+def dispatch_order_delivered(
+    buyer_user_pk: int,
+    order_id: str,
+    auto_confirm_days: int = 7,
+) -> None:
+    """Fire ORDER_DELIVERED notifications for buyer."""
+    notify_user_task.delay(
+        user_pk=buyer_user_pk,
+        event_type=NotificationEventType.ORDER_DELIVERED,
+        context={"order_id": order_id, "auto_confirm_days": auto_confirm_days},
+        related_object_id=order_id,
+        related_object_type="orders.Order",
+    )
+
+
+def dispatch_order_cancelled(
+    buyer_user_pk: int,
+    order_id: str,
+    amount_display: str,
+    refund_status: str,
+) -> None:
+    """Fire ORDER_CANCELLED notifications for buyer."""
+    notify_user_task.delay(
+        user_pk=buyer_user_pk,
+        event_type=NotificationEventType.ORDER_CANCELLED,
+        context={
+            "order_id": order_id,
+            "amount": amount_display,
+            "refund_status": refund_status,
         },
         related_object_id=order_id,
         related_object_type="orders.Order",
@@ -331,6 +416,41 @@ def dispatch_store_rejected(
         user_pk=vendor_user_pk,
         event_type=NotificationEventType.STORE_REJECTED,
         context={"store_name": store_name, "reason": reason},
+    )
+
+
+def dispatch_listing_approved(
+    vendor_user_pk: int,
+    product_name: str,
+    product_id: str,
+) -> None:
+    """Fire LISTING_APPROVED notification for vendor."""
+    notify_user_task.delay(
+        user_pk=vendor_user_pk,
+        event_type=NotificationEventType.LISTING_APPROVED,
+        context={"product_name": product_name, "product_id": product_id},
+        related_object_id=product_id,
+        related_object_type="products.Product",
+    )
+
+
+def dispatch_listing_rejected(
+    vendor_user_pk: int,
+    product_name: str,
+    product_id: str,
+    reason: str,
+) -> None:
+    """Fire LISTING_REJECTED notification for vendor."""
+    notify_user_task.delay(
+        user_pk=vendor_user_pk,
+        event_type=NotificationEventType.LISTING_REJECTED,
+        context={
+            "product_name": product_name,
+            "product_id": product_id,
+            "reason": reason,
+        },
+        related_object_id=product_id,
+        related_object_type="products.Product",
     )
 
 

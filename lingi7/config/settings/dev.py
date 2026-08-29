@@ -3,6 +3,8 @@ Lingi7 - Development Settings
 Override base settings for local development only.
 """
 
+from decouple import config
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = True
@@ -11,8 +13,12 @@ DEBUG = True
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
-# Console email - see all emails in terminal without SMTP server
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Email via Brevo Transactional API. Override with EMAIL_BACKEND=console to
+# see emails in the terminal instead of sending them.
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND",
+    default="apps.notifications.email_backends.brevo.BrevoEmailBackend",
+)
 
 # Storage - local filesystem in dev, not S3
 DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"

@@ -250,6 +250,10 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1   # Prevents one worker hoarding tasks
 CELERY_TASK_ACKS_LATE = True            # Task acknowledged only after completion
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
+# Run tasks inline instead of via a broker/worker (used on Colab / local dev)
+CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=False, cast=bool)
+CELERY_TASK_EAGER_PROPAGATES = config("CELERY_TASK_EAGER_PROPAGATES", default=False, cast=bool)
+
 # Named queues — route critical financial tasks away from general queue
 CELERY_TASK_ROUTES = {
     "apps.escrow.tasks.*":        {"queue": "default"},

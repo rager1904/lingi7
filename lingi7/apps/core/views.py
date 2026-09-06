@@ -94,8 +94,8 @@ def platform_status(request: Any) -> JsonResponse:
                     "id": "catalog-enrichment",
                     "name": "Catalog Enrichment",
                     "status": "service-integrated",
-                    "api_base": "/api/enrichment",
-                    "dashboard_path": "/vendor/products",
+                    "api_base": "/api/v1/products/enrichment-workbench",
+                    "dashboard_path": "/vendor/enrichment",
                 },
                 {
                     "id": "shopping-assistant",

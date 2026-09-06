@@ -1,19 +1,20 @@
-import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
-import { Stack, Text, Flex, SegmentedControl, Spinner } from '@/ui-kit';
-import type { ProtocolSchemas } from '@/lib/api';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from "react";
+import { Stack, Text, Flex, SegmentedControl, Spinner } from "./ui-kit";
+import type { ProtocolSchemas } from "../../api/enrichment";
 
 const TOKEN_COLORS = {
-  key: '#9CDCFE',       // light blue — keys
-  string: '#CE9178',    // warm orange — string values
-  number: '#B5CEA8',    // soft green — numbers
-  boolean: '#569CD6',   // blue — true/false
-  null: '#6A737D',      // gray — null
-  bracket: '#D4D4D4',   // light gray — {}[]
-  punctuation: '#808080', // gray — : ,
+  key: "#9CDCFE", // light blue — keys
+  string: "#CE9178", // warm orange — string values
+  number: "#B5CEA8", // soft green — numbers
+  boolean: "#569CD6", // blue — true/false
+  null: "#6A737D", // gray — null
+  bracket: "#D4D4D4", // light gray — {}[]
+  punctuation: "#808080", // gray — : ,
 } as const;
 
 function highlightJson(json: string): ReactNode[] {
-  const tokenRegex = /("(?:\\.|[^"\\])*")\s*(:)|("(?:\\.|[^"\\])*")|([-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\btrue\b|\bfalse\b)|(\bnull\b)|([{}[\],])/g;
+  const tokenRegex =
+    /("(?:\\.|[^"\\])*")\s*(:)|("(?:\\.|[^"\\])*")|([-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(\btrue\b|\bfalse\b)|(\bnull\b)|([{}[\],])/g;
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -55,9 +56,9 @@ interface ProtocolsTabContentProps {
 }
 
 export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTabContentProps) {
-  const [activeProtocol, setActiveProtocol] = useState<string>('acp');
+  const [activeProtocol, setActiveProtocol] = useState<string>("acp");
   const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -66,8 +67,8 @@ export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTab
   }, []);
 
   const jsonString = useMemo(() => {
-    if (!protocolSchemas) return '';
-    const schema = activeProtocol === 'acp' ? protocolSchemas.acp : protocolSchemas.ucp;
+    if (!protocolSchemas) return "";
+    const schema = activeProtocol === "acp" ? protocolSchemas.acp : protocolSchemas.ucp;
     return JSON.stringify(schema, null, 2);
   }, [protocolSchemas, activeProtocol]);
 
@@ -89,7 +90,7 @@ export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTab
 
   if (isLoading) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
+      <div style={{ padding: "40px", textAlign: "center" }}>
         <Spinner size="large" description="Generating protocol schemas..." />
       </div>
     );
@@ -97,7 +98,7 @@ export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTab
 
   if (!protocolSchemas) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center' }}>
+      <div style={{ padding: "24px", textAlign: "center" }}>
         <Text kind="body/regular/md" className="text-secondary">
           No protocol data available yet. Run analysis to generate protocol schemas.
         </Text>
@@ -106,7 +107,7 @@ export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTab
   }
 
   return (
-    <div style={{ paddingTop: '16px' }}>
+    <div style={{ paddingTop: "16px" }}>
       <Stack gap="4">
         <Flex justify="between" align="center">
           <SegmentedControl
@@ -114,8 +115,8 @@ export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTab
             value={activeProtocol}
             onValueChange={setActiveProtocol}
             items={[
-              { value: 'acp', children: 'ACP' },
-              { value: 'ucp', children: 'UCP' },
+              { value: "acp", children: "ACP" },
+              { value: "ucp", children: "UCP" },
             ]}
           />
           <Text kind="body/regular/sm" className="text-secondary">
@@ -125,44 +126,44 @@ export function ProtocolsTabContent({ protocolSchemas, isLoading }: ProtocolsTab
 
         <div
           style={{
-            position: 'relative',
-            backgroundColor: 'rgba(0, 0, 0, 0.3)',
-            borderRadius: '12px',
-            padding: '16px',
-            maxHeight: '400px',
-            overflowY: 'auto',
+            position: "relative",
+            backgroundColor: "rgba(0, 0, 0, 0.3)",
+            borderRadius: "12px",
+            padding: "16px",
+            maxHeight: "400px",
+            overflowY: "auto",
+            border: "1px solid var(--color-border-base)",
           }}
-          className="border border-base"
         >
           <button
             onClick={handleCopy}
             style={{
-              position: 'absolute',
-              top: '10px',
-              right: '10px',
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              color: copied ? '#76B900' : 'rgba(255, 255, 255, 0.5)',
-              padding: '4px 10px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontFamily: 'inherit',
-              transition: 'color 0.15s, border-color 0.15s',
-              borderColor: copied ? 'rgba(118, 185, 0, 0.4)' : 'rgba(255, 255, 255, 0.12)',
+              position: "absolute",
+              top: "10px",
+              right: "10px",
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              color: copied ? "#76B900" : "rgba(255, 255, 255, 0.5)",
+              padding: "4px 10px",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontFamily: "inherit",
+              transition: "color 0.15s, border-color 0.15s",
+              borderColor: copied ? "rgba(118, 185, 0, 0.4)" : "rgba(255, 255, 255, 0.12)",
             }}
           >
-            {copied ? 'Copied!' : 'Copy'}
+            {copied ? "Copied!" : "Copy"}
           </button>
           <pre
             className="text-primary"
             style={{
-              fontFamily: 'monospace',
-              fontSize: '13px',
+              fontFamily: "monospace",
+              fontSize: "13px",
               lineHeight: 1.6,
               margin: 0,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
             }}
           >
             {highlightedJson}

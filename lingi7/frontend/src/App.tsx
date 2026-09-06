@@ -53,6 +53,7 @@ const VendorProductsPage   = lazy(() => import("./pages/VendorProductsPage"));
 const VendorOrdersPage     = lazy(() => import("./pages/VendorOrdersPage"));
 const VendorOperationsPage = lazy(() => import("./pages/VendorOperationsPage"));
 const PublicTrackingPage   = lazy(() => import("./pages/PublicTrackingPage"));
+const EnrichmentWorkbenchPage = lazy(() => import("./pages/EnrichmentWorkbenchPage"));
 const LoginPage          = lazy(() =>
   import("./pages/AuthPages").then((m) => ({ default: m.LoginPage }))
 );
@@ -156,6 +157,13 @@ const App: React.FC = () => (
         <Route element={<GuestOnly />}>
           <Route path="/login"    element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+        </Route>
+      </Route>
+
+      {/* ── Auth-protected fullscreen (no nav chrome) ── */}
+      <Route element={<RequireAuth />}>
+        <Route element={<BareLayout />}>
+          <Route path="/vendor/enrichment" element={<EnrichmentWorkbenchPage />} />
         </Route>
       </Route>
 

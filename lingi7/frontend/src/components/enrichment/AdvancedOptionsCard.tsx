@@ -1,40 +1,48 @@
-import { Card, Stack, Text, Button, Flex, Switch, TextArea } from '@/ui-kit';
-import { PolicyDocument, PolicyUploadResult } from '@/types';
-import { useState, useEffect, CSSProperties } from 'react';
+import { Card, Stack, Text, Button, Flex, Switch, TextArea } from "./ui-kit";
+import type { PolicyDocument, PolicyUploadResult } from "../../types/enrichment";
+import { useState, useEffect, type CSSProperties } from "react";
 
 const UPLOAD_STAGES = [
-  'Uploading PDFs',
-  'Parsing documents',
-  'Building embeddings',
-  'Indexing vectors',
+  "Uploading PDFs",
+  "Parsing documents",
+  "Building embeddings",
+  "Indexing vectors",
+] as const;
+
+const MANUAL_UPLOAD_STAGES = [
+  "Uploading PDF",
+  "Extracting text",
+  "Building embeddings",
+  "Generating queries",
+  "Retrieving knowledge",
 ] as const;
 
 const innerCardStyle: CSSProperties = {
-  background: 'var(--color-surface-sunken)',
-  border: '1px solid var(--color-border-base)',
-  borderRadius: '18px',
-  padding: '18px',
+  background: "var(--color-surface-sunken)",
+  border: "1px solid var(--color-border-base)",
+  borderRadius: "18px",
+  padding: "18px",
 };
 
 const toggleRowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '16px',
-  padding: '14px 16px',
-  border: '1px solid var(--color-border-base)',
-  borderRadius: '14px',
-  background: 'var(--color-surface-base)',
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "16px",
+  padding: "14px 16px",
+  border: "1px solid var(--color-border-base)",
+  borderRadius: "14px",
+  background: "var(--color-surface-base)",
 };
 
 const pillStyle: CSSProperties = {
-  border: '1px solid var(--color-border-base)',
-  background: 'rgba(255,255,255,0.03)',
-  padding: '6px 10px',
-  borderRadius: '999px',
-  fontSize: '12px',
-  color: 'var(--text-color-subtle)',
-  whiteSpace: 'nowrap',
+  border: "1px solid var(--color-border-base)",
+  background: "rgba(255,255,255,0.03)",
+  padding: "6px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  color: "var(--text-color-subtle)",
+  whiteSpace: "nowrap",
   flexShrink: 0,
 };
 
@@ -63,14 +71,6 @@ interface Props {
   onEnable3DChange: (value: boolean) => void;
 }
 
-const MANUAL_UPLOAD_STAGES = [
-  'Uploading PDF',
-  'Extracting text',
-  'Building embeddings',
-  'Generating queries',
-  'Retrieving knowledge',
-] as const;
-
 function StagedUploadProgress({ stages }: { stages: readonly string[] }) {
   const [stageIndex, setStageIndex] = useState(0);
 
@@ -84,46 +84,52 @@ function StagedUploadProgress({ stages }: { stages: readonly string[] }) {
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '14px',
-        padding: '16px 20px',
-        border: '1px solid rgba(118, 185, 0, 0.25)',
-        borderRadius: '14px',
-        background: 'rgba(118, 185, 0, 0.06)',
-        marginTop: '14px',
+        display: "flex",
+        alignItems: "center",
+        gap: "14px",
+        padding: "16px 20px",
+        border: "1px solid rgba(118, 185, 0, 0.25)",
+        borderRadius: "14px",
+        background: "rgba(118, 185, 0, 0.06)",
+        marginTop: "14px",
       }}
     >
       <div
         style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '50%',
-          border: '2.5px solid rgba(118, 185, 0, 0.15)',
-          borderTopColor: '#76B900',
-          animation: 'upload-spin 0.8s linear infinite',
+          width: "32px",
+          height: "32px",
+          borderRadius: "50%",
+          border: "2.5px solid rgba(118, 185, 0, 0.15)",
+          borderTopColor: "#76B900",
+          animation: "upload-spin 0.8s linear infinite",
           flexShrink: 0,
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-          <Text kind="body/semibold/sm" style={{ color: '#76B900' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+          <Text kind="body/semibold/sm" style={{ color: "#76B900" }}>
             {stages[stageIndex]}
           </Text>
-          <span style={{ color: 'rgba(118, 185, 0, 0.6)', fontSize: '12px', animation: 'upload-dots 1.4s steps(4, end) infinite' }}>
+          <span
+            style={{
+              color: "rgba(118, 185, 0, 0.6)",
+              fontSize: "12px",
+              animation: "upload-dots 1.4s steps(4, end) infinite",
+            }}
+          >
             ...
           </span>
         </div>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {stages.map((label, i) => (
             <div
               key={label}
               style={{
-                width: i <= stageIndex ? '20px' : '6px',
-                height: '3px',
-                borderRadius: '2px',
-                background: i <= stageIndex ? '#76B900' : 'rgba(255,255,255,0.1)',
-                transition: 'all 0.4s ease',
+                width: i <= stageIndex ? "20px" : "6px",
+                height: "3px",
+                borderRadius: "2px",
+                background: i <= stageIndex ? "#76B900" : "rgba(255,255,255,0.1)",
+                transition: "all 0.4s ease",
               }}
             />
           ))}
@@ -174,7 +180,11 @@ export function AdvancedOptionsCard({
     <Card>
       <Flex justify="between" align="start">
         <Stack gap="2">
-          <Text kind="body/regular/sm" className="text-subtle" style={{ letterSpacing: '0.08em', textTransform: 'uppercase', fontSize: '12px' }}>
+          <Text
+            kind="body/regular/sm"
+            className="text-subtle"
+            style={{ letterSpacing: "0.08em", textTransform: "uppercase", fontSize: "12px" }}
+          >
             Configuration
           </Text>
           <Text kind="title/md" className="text-primary">Advanced options</Text>
@@ -184,18 +194,18 @@ export function AdvancedOptionsCard({
         </Stack>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
+          aria-label={isCollapsed ? "Expand section" : "Collapse section"}
           style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '999px',
-            display: 'grid',
-            placeItems: 'center',
-            border: '1px solid var(--color-border-base)',
-            background: 'var(--color-surface-raised)',
-            color: 'var(--text-color-subtle)',
-            cursor: 'pointer',
-            transition: '0.2s ease',
+            width: "40px",
+            height: "40px",
+            borderRadius: "999px",
+            display: "grid",
+            placeItems: "center",
+            border: "1px solid var(--color-border-base)",
+            background: "var(--color-surface-raised)",
+            color: "var(--text-color-subtle)",
+            cursor: "pointer",
+            transition: "0.2s ease",
             flexShrink: 0,
           }}
         >
@@ -205,8 +215,8 @@ export function AdvancedOptionsCard({
             viewBox="0 0 16 16"
             fill="none"
             style={{
-              transform: isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease',
+              transform: isCollapsed ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
             }}
           >
             <path d="M4 10L8 6L12 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -215,11 +225,11 @@ export function AdvancedOptionsCard({
       </Flex>
 
       {!isCollapsed && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 0.95fr', gap: '24px', marginTop: '24px' }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 0.95fr", gap: "24px", marginTop: "24px" }}>
           <Stack gap="5">
             {/* Brand Instructions */}
             <div style={innerCardStyle}>
-              <Flex justify="between" align="start" style={{ marginBottom: '12px' }}>
+              <Flex justify="between" align="start" style={{ marginBottom: "12px" }}>
                 <Stack gap="1">
                   <Text kind="body/semibold/md" className="text-primary">Brand instructions</Text>
                   <Text kind="body/regular/sm" className="text-subtle">
@@ -241,7 +251,7 @@ export function AdvancedOptionsCard({
 
             {/* Policy Library */}
             <div style={innerCardStyle}>
-              <Flex justify="between" align="center" style={{ marginBottom: '14px' }}>
+              <Flex justify="between" align="center" style={{ marginBottom: "14px" }}>
                 <Stack gap="1">
                   <Text kind="body/semibold/md" className="text-primary">Policy library</Text>
                   <Text kind="body/regular/sm" className="text-subtle">
@@ -249,8 +259,8 @@ export function AdvancedOptionsCard({
                   </Text>
                 </Stack>
                 {loadedPolicies.length > 0 ? (
-                  <Text kind="body/regular/sm" className="text-subtle" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    {loadedPolicies.length} {loadedPolicies.length === 1 ? 'file' : 'files'} loaded
+                  <Text kind="body/regular/sm" className="text-subtle" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {loadedPolicies.length} {loadedPolicies.length === 1 ? "file" : "files"} loaded
                   </Text>
                 ) : (
                   <span style={pillStyle}>Optional</span>
@@ -269,12 +279,7 @@ export function AdvancedOptionsCard({
                     Upload PDFs
                   </Button>
                   {loadedPolicies.length > 0 && (
-                    <Button
-                      kind="secondary"
-                      size="medium"
-                      onClick={onClearPolicyLibrary}
-                      disabled={disabled}
-                    >
+                    <Button kind="secondary" size="medium" onClick={onClearPolicyLibrary} disabled={disabled}>
                       Start from scratch
                     </Button>
                   )}
@@ -284,15 +289,25 @@ export function AdvancedOptionsCard({
               {isUploadingPolicies && <StagedUploadProgress stages={UPLOAD_STAGES} />}
 
               {policyUploadError && (
-                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--color-red-500)', backgroundColor: 'rgba(255, 84, 89, 0.08)', marginTop: '14px' }}>
-                  <Text kind="body/regular/sm" style={{ color: 'var(--color-red-400)' }}>
+                <div
+                  className="p-3 rounded-lg border"
+                  style={{
+                    borderColor: "var(--color-red-500)",
+                    backgroundColor: "rgba(255, 84, 89, 0.08)",
+                    marginTop: "14px",
+                  }}
+                >
+                  <Text kind="body/regular/sm" style={{ color: "var(--color-red-400)" }}>
                     {policyUploadError}
                   </Text>
                 </div>
               )}
 
               {policyUploadResults.length > 0 && !isUploadingPolicies && (
-                <div className="p-3 rounded-lg border border-base bg-surface-sunken" style={{ marginTop: '14px' }}>
+                <div
+                  className="p-3 rounded-lg border bg-surface-sunken"
+                  style={{ borderColor: "var(--color-border-base)", marginTop: "14px" }}
+                >
                   <Text kind="body/regular/sm" className="text-primary">
                     {policyUploadResults.filter((r) => !r.already_loaded).length} new,{" "}
                     {policyUploadResults.filter((r) => r.already_loaded).length} already loaded
@@ -301,42 +316,42 @@ export function AdvancedOptionsCard({
               )}
 
               {loadedPolicies.length > 0 && !isUploadingPolicies && (
-                <Stack gap="3" style={{ marginTop: '14px' }}>
+                <Stack gap="3" style={{ marginTop: "14px" }}>
                   {loadedPolicies.map((doc) => (
                     <div
                       key={doc.document_hash}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '14px',
-                        padding: '14px',
-                        border: '1px solid var(--color-border-base)',
-                        borderRadius: '14px',
-                        background: 'var(--color-surface-base)',
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "14px",
+                        padding: "14px",
+                        border: "1px solid var(--color-border-base)",
+                        borderRadius: "14px",
+                        background: "var(--color-surface-base)",
                       }}
                     >
                       <Flex gap="3" align="center" style={{ minWidth: 0 }}>
                         <div
                           style={{
-                            width: '42px',
-                            height: '42px',
-                            borderRadius: '12px',
-                            background: 'rgba(255,255,255,0.05)',
-                            display: 'grid',
-                            placeItems: 'center',
-                            fontSize: '18px',
+                            width: "42px",
+                            height: "42px",
+                            borderRadius: "12px",
+                            background: "rgba(255,255,255,0.05)",
+                            display: "grid",
+                            placeItems: "center",
+                            fontSize: "18px",
                             flexShrink: 0,
                           }}
                         >
                           📄
                         </div>
                         <Stack gap="1" style={{ minWidth: 0 }}>
-                          <Text kind="body/semibold/sm" className="text-primary" style={{ wordBreak: 'break-word' }}>
+                          <Text kind="body/semibold/sm" className="text-primary" style={{ wordBreak: "break-word" }}>
                             {doc.filename}
                           </Text>
                           <Text kind="body/regular/sm" className="text-subtle">
-                            {doc.chunk_count} indexed {doc.chunk_count === 1 ? 'record' : 'records'}
+                            {doc.chunk_count} indexed {doc.chunk_count === 1 ? "record" : "records"}
                           </Text>
                         </Stack>
                       </Flex>
@@ -349,7 +364,7 @@ export function AdvancedOptionsCard({
 
             {/* Product Manual for FAQs */}
             <div style={innerCardStyle}>
-              <Flex justify="between" align="center" style={{ marginBottom: '14px' }}>
+              <Flex justify="between" align="center" style={{ marginBottom: "14px" }}>
                 <Stack gap="1">
                   <Text kind="body/semibold/md" className="text-primary">Product manual for FAQs</Text>
                   <Text kind="body/regular/sm" className="text-subtle">
@@ -374,8 +389,15 @@ export function AdvancedOptionsCard({
               {isUploadingManual && <StagedUploadProgress stages={MANUAL_UPLOAD_STAGES} />}
 
               {manualUploadError && (
-                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--color-red-500)', backgroundColor: 'rgba(255, 84, 89, 0.08)', marginTop: '14px' }}>
-                  <Text kind="body/regular/sm" style={{ color: 'var(--color-red-400)' }}>
+                <div
+                  className="p-3 rounded-lg border"
+                  style={{
+                    borderColor: "var(--color-red-500)",
+                    backgroundColor: "rgba(255, 84, 89, 0.08)",
+                    marginTop: "14px",
+                  }}
+                >
+                  <Text kind="body/regular/sm" style={{ color: "var(--color-red-400)" }}>
                     {manualUploadError}
                   </Text>
                 </div>
@@ -384,47 +406,42 @@ export function AdvancedOptionsCard({
               {manualFilename && !isUploadingManual && (
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '14px',
-                    padding: '14px',
-                    border: '1px solid var(--color-border-base)',
-                    borderRadius: '14px',
-                    background: 'var(--color-surface-base)',
-                    marginTop: '14px',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "14px",
+                    padding: "14px",
+                    border: "1px solid var(--color-border-base)",
+                    borderRadius: "14px",
+                    background: "var(--color-surface-base)",
+                    marginTop: "14px",
                   }}
                 >
                   <Flex gap="3" align="center" style={{ minWidth: 0 }}>
                     <div
                       style={{
-                        width: '42px',
-                        height: '42px',
-                        borderRadius: '12px',
-                        background: 'rgba(255,255,255,0.05)',
-                        display: 'grid',
-                        placeItems: 'center',
-                        fontSize: '18px',
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "12px",
+                        background: "rgba(255,255,255,0.05)",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: "18px",
                         flexShrink: 0,
                       }}
                     >
                       📋
                     </div>
                     <Stack gap="1" style={{ minWidth: 0 }}>
-                      <Text kind="body/semibold/sm" className="text-primary" style={{ wordBreak: 'break-word' }}>
+                      <Text kind="body/semibold/sm" className="text-primary" style={{ wordBreak: "break-word" }}>
                         {manualFilename}
                       </Text>
                       <Text kind="body/regular/sm" className="text-subtle">
-                        {manualChunkCount} indexed {manualChunkCount === 1 ? 'chunk' : 'chunks'}
+                        {manualChunkCount} indexed {manualChunkCount === 1 ? "chunk" : "chunks"}
                       </Text>
                     </Stack>
                   </Flex>
-                  <Button
-                    kind="secondary"
-                    size="small"
-                    onClick={onClearManual}
-                    disabled={disabled}
-                  >
+                  <Button kind="secondary" size="small" onClick={onClearManual} disabled={disabled}>
                     Remove
                   </Button>
                 </div>
@@ -435,7 +452,7 @@ export function AdvancedOptionsCard({
           {/* Image Options */}
           <Stack gap="5">
             <div style={innerCardStyle}>
-              <Stack gap="1" style={{ marginBottom: '14px' }}>
+              <Stack gap="1" style={{ marginBottom: "14px" }}>
                 <Text kind="body/semibold/md" className="text-primary">Image options</Text>
                 <Text kind="body/regular/sm" className="text-subtle">
                   Toggle which generation outputs to include.
@@ -446,7 +463,7 @@ export function AdvancedOptionsCard({
                 <div style={toggleRowStyle}>
                   <Stack gap="1">
                     <Text kind="body/semibold/sm" className="text-primary">Image variation 1</Text>
-                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: '12px' }}>
+                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: "12px" }}>
                       Generate an alternate visual based on the source image.
                     </Text>
                   </Stack>
@@ -456,7 +473,7 @@ export function AdvancedOptionsCard({
                 <div style={toggleRowStyle}>
                   <Stack gap="1">
                     <Text kind="body/semibold/sm" className="text-primary">Image variation 2</Text>
-                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: '12px' }}>
+                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: "12px" }}>
                       Enable a second variation path for broader creative output.
                     </Text>
                   </Stack>
@@ -466,7 +483,7 @@ export function AdvancedOptionsCard({
                 <div style={toggleRowStyle}>
                   <Stack gap="1">
                     <Text kind="body/semibold/sm" className="text-primary">3D model</Text>
-                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: '12px' }}>
+                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: "12px" }}>
                       Allow generation workflows that output 3D assets.
                     </Text>
                   </Stack>

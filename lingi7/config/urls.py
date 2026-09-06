@@ -96,7 +96,6 @@ if settings.DEBUG:
 # ── Colab: serve built frontends through Django ───────────────────────────────
 import os
 _FRONTEND_DIST = os.path.join(settings.BASE_DIR, "frontend", "dist")
-_ENRICHMENT_OUT = os.path.join(settings.BASE_DIR.parent, "enrichment", "src", "ui", "out")
 
 if os.path.isdir(_FRONTEND_DIST):
     from django.http import FileResponse
@@ -115,23 +114,3 @@ if os.path.isdir(_FRONTEND_DIST):
     from django.urls import re_path
     urlpatterns += [re_path(r"^(?:store|shop|cart|checkout|wishlist|auth|profile|products)(?:/.*)?$", _serve_spa)]
     urlpatterns += [re_path(r"^$", _serve_spa)]
-
-if os.path.isdir(_ENRICHMENT_OUT):
-    def _serve_enrichment(request, path=""):
-        # Strip leading slash from captured path
-        rel = path.lstrip("/") if path else ""
-        # Try exact file first, then index.html for SPA fallback
-        if rel:
-            file_path = os.path.join(_ENRICHMENT_OUT, rel)
-            if os.path.isfile(file_path):
-                import mimetypes
-                content_type, _ = mimetypes.guess_type(file_path)
-                if content_type is None:
-                    content_type = "application/octet-stream"
-                return FileResponse(open(file_path, "rb"), content_type=content_type)
-        index = os.path.join(_ENRICHMENT_OUT, "index.html")
-        if os.path.exists(index):
-            return FileResponse(open(index, "rb"), content_type="text/html")
-        return JsonResponse({"error": "Enrichment UI not built"}, status=404)
-
-    urlpatterns += [re_path(r"^workbench(?:/(?P<path>.*))?$", _serve_enrichment)]

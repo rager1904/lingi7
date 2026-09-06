@@ -53,13 +53,13 @@ Start AI/model services only on machines with appropriate GPU capacity and valid
 8. Verify:
    - `/health/`
    - `/api/v1/`
-   - `/api/enrichment/health`
+   - workbench gateway: `/api/v1/products/enrichment-workbench/health/services/` (login as a vendor)
    - `/api/assistant/health`
 
 ## Health Checks
 
 - Django: `/health/`
-- Enrichment: `/api/enrichment/health`
+- Enrichment: internal only — reachable via the authenticated workbench gateway at `/api/v1/products/enrichment-workbench/` with `INTERNAL_API_KEY` set on both Django and the enrichment service.
 - Assistant: `/api/assistant/health`
 - PostgreSQL: `pg_isready`
 - Redis: `redis-cli ping`

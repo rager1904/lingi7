@@ -1,6 +1,6 @@
-import { Card, Stack, Text, Button, Flex, Spinner, Select } from '@/ui-kit';
-import { LocaleOption } from '@/types';
-import { useState } from 'react';
+import React, { useState } from "react";
+import { Card, Stack, Text, Button, Flex, Spinner, Select } from "./ui-kit";
+import type { LocaleOption } from "../../types/enrichment";
 
 interface Props {
   uploadedImage: string | null;
@@ -29,7 +29,7 @@ export function ImageUploadCard({
   onDrop,
   onLocaleChange,
   onGenerate,
-  onReset
+  onReset,
 }: Props) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -58,14 +58,17 @@ export function ImageUploadCard({
           <Text kind="title/md" className="text-primary">Image</Text>
           {uploadedImage && (
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-300" style={{ backgroundColor: 'var(--color-green-300)' }}></div>
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: "var(--color-green-300)" }}
+              ></div>
               <Text kind="body/regular/sm" className="text-subtle">Ready</Text>
             </div>
           )}
         </Flex>
-        
+
         {isUploading ? (
-          <div className="border-2 border-dashed border-base rounded-lg p-16 text-center bg-surface-sunken">
+          <div className="border-2 border-dashed rounded-lg p-16 text-center bg-surface-sunken" style={{ borderColor: "var(--color-border-base)" }}>
             <Stack gap="4" align="center">
               <Spinner size="large" aria-label="Uploading image..." />
             </Stack>
@@ -75,13 +78,13 @@ export function ImageUploadCard({
             <div
               className="relative rounded-lg overflow-hidden open-source-green-border"
               style={{
-                minHeight: '400px',
-                backgroundColor: 'var(--color-gray-1000)',
-                borderWidth: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: isAnalyzingFields || isGeneratingImage ? 'default' : 'pointer',
+                minHeight: "400px",
+                backgroundColor: "var(--color-gray-1000)",
+                borderWidth: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: isAnalyzingFields || isGeneratingImage ? "default" : "pointer",
               }}
               onClick={() => {
                 if (!isAnalyzingFields && !isGeneratingImage) onFileSelect();
@@ -93,46 +96,47 @@ export function ImageUploadCard({
                 src={uploadedImage}
                 alt="Uploaded preview"
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: '400px',
-                  width: 'auto',
-                  height: 'auto',
-                  objectFit: 'contain',
-                  display: 'block',
-                  transition: 'opacity 0.2s',
-                  opacity: isImageHovered && !isAnalyzingFields && !isGeneratingImage ? 0.6 : 1,
+                  maxWidth: "100%",
+                  maxHeight: "400px",
+                  width: "auto",
+                  height: "auto",
+                  objectFit: "contain",
+                  display: "block",
+                  transition: "opacity 0.2s",
+                  opacity:
+                    isImageHovered && !isAnalyzingFields && !isGeneratingImage ? 0.6 : 1,
                 }}
               />
               {isImageHovered && !isAnalyzingFields && !isGeneratingImage && (
                 <div
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     inset: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    pointerEvents: 'none',
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "none",
                   }}
                 >
                   <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#76B900">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  <Text kind="body/semibold/sm" style={{ color: '#76B900', marginTop: '8px' }}>
+                  <Text kind="body/semibold/sm" style={{ color: "#76B900", marginTop: "8px" }}>
                     Click to replace image
                   </Text>
                 </div>
               )}
             </div>
-            
+
             <Flex gap="3" align="center">
-              <Button 
-                kind="primary" 
-                size="large" 
+              <Button
+                kind="primary"
+                size="large"
                 className="open-source-green-button"
                 disabled={!uploadedImage || isAnalyzingFields || isGeneratingImage}
                 onClick={onGenerate}
-                style={{ flex: '1' }}
+                style={{ flex: "1" }}
               >
                 {isAnalyzingFields ? (
                   <Flex gap="2" align="center">
@@ -144,10 +148,12 @@ export function ImageUploadCard({
                     <Spinner size="small" aria-label="Generating" />
                     <span>Generating Image...</span>
                   </Flex>
-                ) : 'Generate Enriched Data'}
+                ) : (
+                  "Generate Enriched Data"
+                )}
               </Button>
-              
-              <div style={{ minWidth: '160px' }}>
+
+              <div style={{ minWidth: "160px" }}>
                 <Select
                   items={localeOptions}
                   value={locale}
@@ -158,8 +164,8 @@ export function ImageUploadCard({
                 />
               </div>
 
-              <Button 
-                kind="secondary" 
+              <Button
+                kind="secondary"
                 size="large"
                 disabled={isAnalyzingFields || isGeneratingImage}
                 onClick={onReset}
@@ -167,25 +173,24 @@ export function ImageUploadCard({
                 Reset
               </Button>
             </Flex>
-
           </>
         ) : (
-          <div 
+          <div
             className="rounded-lg text-center transition-all duration-200"
             style={{
-              border: isDragging 
-                ? '3px dashed #76B900' 
-                : isHovered 
-                  ? '2px dashed #76B900' 
-                  : '2px dashed var(--color-border-base)',
-              backgroundColor: isDragging 
-                ? 'rgba(118, 185, 0, 0.08)' 
-                : isHovered 
-                  ? 'rgba(118, 185, 0, 0.05)' 
-                  : 'var(--color-surface-sunken)',
-              padding: '64px',
-              cursor: 'pointer',
-              transform: isDragging ? 'scale(1.01)' : 'scale(1)',
+              border: isDragging
+                ? "3px dashed #76B900"
+                : isHovered
+                  ? "2px dashed #76B900"
+                  : "2px dashed var(--color-border-base)",
+              backgroundColor: isDragging
+                ? "rgba(118, 185, 0, 0.08)"
+                : isHovered
+                  ? "rgba(118, 185, 0, 0.05)"
+                  : "var(--color-surface-sunken)",
+              padding: "64px",
+              cursor: "pointer",
+              transform: isDragging ? "scale(1.01)" : "scale(1)",
             }}
             onClick={onFileSelect}
             onDragOver={handleDragOver}
@@ -196,7 +201,7 @@ export function ImageUploadCard({
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+              if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onFileSelect();
               }
@@ -204,54 +209,52 @@ export function ImageUploadCard({
             aria-label="Upload image by clicking or dragging and dropping"
           >
             <Stack gap="4" align="center">
-              <div 
+              <div
                 className="flex items-center justify-center rounded-lg border transition-all duration-200"
                 style={{
-                  width: '80px',
-                  height: '80px',
-                  backgroundColor: isDragging 
-                    ? 'rgba(118, 185, 0, 0.12)' 
-                    : isHovered 
-                      ? 'rgba(118, 185, 0, 0.08)' 
-                      : 'var(--color-surface-raised)',
-                  borderColor: isDragging 
-                    ? '#76B900' 
-                    : isHovered 
-                      ? 'rgba(118, 185, 0, 0.5)' 
-                      : 'var(--color-border-base)',
-                  transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+                  width: "80px",
+                  height: "80px",
+                  backgroundColor: isDragging
+                    ? "rgba(118, 185, 0, 0.12)"
+                    : isHovered
+                      ? "rgba(118, 185, 0, 0.08)"
+                      : "var(--color-surface-raised)",
+                  borderColor: isDragging
+                    ? "#76B900"
+                    : isHovered
+                      ? "rgba(118, 185, 0, 0.5)"
+                      : "var(--color-border-base)",
+                  transform: isHovered ? "translateY(-4px)" : "translateY(0)",
                 }}
               >
-                <svg 
-                  className="transition-all duration-200" 
+                <svg
+                  className="transition-all duration-200"
                   style={{
-                    width: '40px',
-                    height: '40px',
-                    transform: isDragging ? 'scale(1.1)' : 'scale(1)',
+                    width: "40px",
+                    height: "40px",
+                    transform: isDragging ? "scale(1.1)" : "scale(1)",
                   }}
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke={isDragging || isHovered ? '#76B900' : 'var(--text-color-subtle)'}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke={isDragging || isHovered ? "#76B900" : "var(--text-color-subtle)"}
                 >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={1.5} 
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" 
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
               </div>
               <Stack gap="2" align="center">
-                <Text 
-                  kind="body/semibold/md" 
+                <Text
+                  kind="body/semibold/md"
                   style={{
-                    color: isDragging || isHovered 
-                      ? '#76B900' 
-                      : 'var(--text-color-primary)',
-                    transition: 'color 0.2s'
+                    color: isDragging || isHovered ? "#76B900" : "var(--text-color-primary)",
+                    transition: "color 0.2s",
                   }}
                 >
-                  {isDragging ? 'Drop your image here' : 'Click to upload or drag and drop'}
+                  {isDragging ? "Drop your image here" : "Click to upload or drag and drop"}
                 </Text>
                 <Text kind="body/regular/sm" className="text-subtle">
                   PNG, JPG or JPEG (max. 10MB)

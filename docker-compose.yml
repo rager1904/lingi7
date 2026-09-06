@@ -322,6 +322,7 @@ services:
       CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
       CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
       ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     env_file:
       - ./lingi7/.env.dev
     volumes:
@@ -355,6 +356,7 @@ services:
       CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
       CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
       ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     env_file:
       - ./lingi7/.env.dev
     volumes:
@@ -386,6 +388,7 @@ services:
       CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
       CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
       ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     env_file:
       - ./lingi7/.env.dev
     volumes:
@@ -411,6 +414,7 @@ services:
     environment:
       - API_KEY=${API_KEY:?API_KEY is required}
       - HF_TOKEN=${HF_TOKEN:-}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     volumes:
       - ./enrichment/data/outputs:/app/data/outputs
       - ./enrichment/data/policies:/app/data/policies
@@ -430,20 +434,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - lingi7-platform-net
-
-  enrichment-frontend:
-    build:
-      context: ./enrichment/src/ui
-      dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_LINGI7_API_BASE=/api/v1
-    container_name: lingi7-enrichment-frontend
-    environment:
-      - NEXT_PUBLIC_LINGI7_API_BASE=/api/v1
-    depends_on:
-      - enrichment-backend
     networks:
       - lingi7-platform-net
 
@@ -549,7 +539,6 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - lingi7-web
-      - enrichment-frontend
       - chain-server
       - shopping-frontend
     networks:

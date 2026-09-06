@@ -1,3 +1,8 @@
+/**
+ * Catalog enrichment workbench types.
+ * Mirrors the Django `/api/v1/products/enrichment-workbench/*` serializer shapes.
+ */
+
 export interface ProductFields {
   title: string;
   description: string;
@@ -17,7 +22,7 @@ export interface PolicyMatch {
 }
 
 export interface PolicyDecision {
-  status: 'pass' | 'fail';
+  status: "pass" | "fail";
   label: string;
   summary: string;
   matched_policies: PolicyMatch[];
@@ -65,28 +70,22 @@ export interface AugmentedData {
   faqs?: FAQ[];
 }
 
-export interface ImageMetadata {
-  name: string;
-  size: string;
-  dimensions?: string;
-}
-
 export interface LocaleOption {
   value: string;
   children: string;
 }
 
 export const SUPPORTED_LOCALES: LocaleOption[] = [
-  { value: 'en-US', children: 'English (US)' },
-  { value: 'en-GB', children: 'English (UK)' },
-  { value: 'en-AU', children: 'English (Australia)' },
-  { value: 'en-CA', children: 'English (Canada)' },
-  { value: 'es-ES', children: 'Spanish (Spain)' },
-  { value: 'es-MX', children: 'Spanish (Mexico)' },
-  { value: 'es-AR', children: 'Spanish (Argentina)' },
-  { value: 'es-CO', children: 'Spanish (Colombia)' },
-  { value: 'fr-FR', children: 'French (France)' },
-  { value: 'fr-CA', children: 'French (Canada)' }
+  { value: "en-US", children: "English (US)" },
+  { value: "en-GB", children: "English (UK)" },
+  { value: "en-AU", children: "English (Australia)" },
+  { value: "en-CA", children: "English (Canada)" },
+  { value: "es-ES", children: "Spanish (Spain)" },
+  { value: "es-MX", children: "Spanish (Mexico)" },
+  { value: "es-AR", children: "Spanish (Argentina)" },
+  { value: "es-CO", children: "Spanish (Colombia)" },
+  { value: "fr-FR", children: "French (France)" },
+  { value: "fr-CA", children: "French (Canada)" },
 ];
 
 export type HealthState = "healthy" | "unhealthy" | "checking";

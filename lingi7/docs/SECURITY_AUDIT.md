@@ -356,7 +356,7 @@ Returns all users with NRC, address, KYC metadata — no pagination, no audit lo
 | # | Finding | Status |
 |---|---------|--------|
 | L1 | Fraud API returns exception strings to client | Not fixed |
-| L2 | `INTERNAL_API_KEY` defined but unused | Not fixed |
+| L2 | `INTERNAL_API_KEY` defined but unused | Fixed: now sent by Django as `X-Internal-Api-Key` to the catalog enrichment service, which requires it on every endpoint except `/health` |
 | L3 | PII in registration logs | Not fixed |
 | L4 | OpenAPI URL condition fragile | Not fixed |
 | L5 | LLM SSRF if misconfigured `CATALOG_LLM_BASE_URL` | Not fixed |

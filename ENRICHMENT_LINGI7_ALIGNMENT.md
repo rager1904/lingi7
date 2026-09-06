@@ -42,19 +42,54 @@ If the product ID does not exist or does not belong to the authenticated vendor,
 
 ## Frontend Alignment
 
-The enrichment UI now uses:
+The enrichment workbench now runs as a first-class page inside the Lingi7 Vite + React
+frontend (the standalone Next.js app under `enrichment/src/ui` has been removed):
 
 ```text
-NEXT_PUBLIC_LINGI7_API_BASE=http://localhost:8000/api/v1
+Route:  /vendor/enrichment      (auth required, logged-in user)
+Entry:  Vendor dashboard → "Enrich listings with AI studio →"
+Admin:  Platform dashboard → "Catalog enrichment" card → /vendor/enrichment
 ```
+
+The page uses the shared app stack — `Vite + React 18 + Tailwind 3`, the shared
+authenticated axios `apiClient` (JWT injection + silent refresh), and the
+`src/components/enrichment/*` components with the dark studio theme scoped under
+`.enrichment-shell` in `src/styles/enrichment.css`.
 
 It no longer calls `/vlm/*`, `/policies`, `/generate/*`, or `/protocols/*` directly on the enrichment service from the browser.
 
+## Security Alignment
+
+The enrichment FastAPI service follows Lingi7's internal-service security model:
+
+- **No public exposure.** nginx no longer proxies `/api/enrichment/` to the
+  enrichment backend (the upstream and location blocks were removed; the path
+  now returns `404`). The service is reachable only on the internal Docker
+  network.
+- **Shared internal-service key.** Django sends `settings.INTERNAL_API_KEY` as
+  the `X-Internal-Api-Key` header on every call to the enrichment service
+  (the workbench proxy and the background `ExternalCatalogEnrichmentClient`).
+  The enrichment FastAPI requires this header on all endpoints except `/health`
+  (used by the container healthcheck and Colab health probe) and rejects
+  requests with `401` when it is missing/invalid, or `503` when the key is not
+  configured. Both sides fail closed when `INTERNAL_API_KEY` is unset.
+- **Role gate.** `EnrichmentWorkbenchProxy` requires `IsAuthenticated` plus
+  `IsVendor` OR `IsAdmin` (vendor workbench; admins may access from the
+  platform dashboard). Buyers and anonymous users are denied.
+- **Rate limiting.** The workbench routes remain under the `ai` throttle scope
+  (`60/hour`).
+- The enrichment FastAPI no longer enables browser CORS; it serves the Django
+  gateway only.
+
 ## Deployment Alignment
 
-- Root `docker-compose.yml` passes `NEXT_PUBLIC_LINGI7_API_BASE=/api/v1`.
-- `enrichment/docker-compose.yml` has been replaced with a CPU/open-source standalone layout.
-- The unused bundled Kaizen UI package was removed from `enrichment/src/ui`.
+- Root `docker-compose.yml` no longer builds an `enrichment-frontend` Next.js container; the workbench is served by the Lingi7 web app.
+- nginx no longer proxies `/enrichment/` to `enrichment-frontend:3000` nor
+  `/api/enrichment/` to the enrichment backend (those upstreams and location
+  blocks have been removed).
+- `lingi7/config/urls.py` no longer serves the standalone `enrichment/src/ui/out` build at `/workbench`.
+- `enrichment/docker-compose.yml` (standalone local dev) still exists for running the enrichment FastAPI service in isolation; it requires `INTERNAL_API_KEY` for any authenticated call.
+- The unused bundled Kaizen UI package was removed from `enrichment/src/ui`; the entire standalone UI package is now removed.
 
 ## Verification
 
@@ -67,4 +102,4 @@ Passed:
 
 Known local limitation:
 
-- The enrichment UI production build still requires installing `next` into `enrichment/src/ui/node_modules`; the current workspace does not have that dependency installed.
+- The enrichment studio is only reachable after logging in as a registered user/vendor; it renders full-screen without the marketplace TopBar/Footer chrome.

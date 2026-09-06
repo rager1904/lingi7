@@ -1,0 +1,319 @@
+/**
+ * Catalog enrichment workbench styles.
+ *
+ * Scoped under `.enrichment-shell` so the dark workbench theme
+ * (CSS variables, app-bar, intro hero, modal, spinners) never leaks
+ * into the rest of the Lingi7 app. Shared Tailwind utility classes
+ * come from the global build.
+ */
+
+.enrichment-shell {
+  --color-accent: #1769ff;
+  --color-border-base: rgba(134, 164, 224, 0.2);
+  --color-surface-base: #071126;
+  --color-surface-raised: rgba(11, 24, 53, 0.84);
+  --color-surface-sunken: rgba(4, 13, 32, 0.74);
+  --background-color-surface-base: #030a1a;
+  --background-color-surface-sunken: #050f25;
+  --background-color-surface-overlay: #0c1a38;
+  --border-color-base: rgba(134, 164, 224, 0.2);
+  --text-color-primary: #f8fbff;
+  --text-color-secondary: #b6c3df;
+  --text-color-subtle: #8091b4;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-green-300: #86efac;
+  --color-gray-1000: #020617;
+  --radius-md: 8px;
+
+  min-height: 100vh;
+  color: var(--text-color-primary);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  position: relative;
+}
+
+.enrichment-shell .app-shell {
+  background: radial-gradient(950px 480px at 80% -8%, rgba(22, 105, 255, 0.27), transparent 62%),
+    radial-gradient(700px 520px at -5% 42%, rgba(11, 61, 173, 0.2), transparent 66%),
+    #030a1a;
+}
+
+.enrichment-shell .workbench-main {
+  padding: 8px 32px 56px;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.enrichment-shell .workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 24px;
+}
+
+.enrichment-shell .workbench-wide {
+  grid-column: 1 / -1;
+}
+
+.enrichment-shell .generated-visuals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+/* Header app-bar is embedded (non-fixed) inside the main app shell */
+.enrichment-shell .app-bar {
+  align-items: center;
+  background: rgba(2, 7, 20, 0.82);
+  border-bottom: 1px solid rgba(129, 163, 228, 0.16);
+  backdrop-filter: blur(18px);
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 8px;
+  border-radius: 0 0 16px 16px;
+  margin: 16px 0 24px;
+}
+
+.enrichment-shell .brand-lockup {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  font-size: 24px;
+  color: #f9fbff;
+}
+
+.enrichment-shell .brand-lockup span {
+  color: #5d96ff;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  font-weight: 650;
+}
+
+.enrichment-shell .system-health {
+  border: 1px solid var(--color-border-base);
+  background: rgba(10, 28, 62, 0.72);
+  border-radius: 10px;
+  padding: 7px 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.enrichment-shell .open-source-green-border {
+  border: 2px solid var(--color-accent) !important;
+}
+
+.enrichment-shell .open-source-green-button {
+  background-color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+  color: white !important;
+}
+
+.enrichment-shell .open-source-green-button:hover:not(:disabled) {
+  background-color: #0b53e8 !important;
+  border-color: #3a7aff !important;
+}
+
+.enrichment-shell .open-source-green-button:active:not(:disabled) {
+  background-color: #0845c6 !important;
+  border-color: #2669f5 !important;
+}
+
+.enrichment-shell .open-source-green-button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+.enrichment-shell .open-source-green-text {
+  color: var(--color-accent) !important;
+}
+
+/* Utility helpers used by workbench components inside the dark theme */
+.enrichment-shell .text-primary {
+  color: #f8fbff !important;
+}
+
+.enrichment-shell .text-secondary {
+  color: #b6c3df !important;
+}
+
+.enrichment-shell .text-subtle {
+  color: #8091b4 !important;
+}
+
+.enrichment-shell .text-center {
+  text-align: center;
+}
+
+.enrichment-shell .bg-surface-base {
+  background: var(--color-surface-base);
+}
+
+.enrichment-shell .bg-surface-raised {
+  background: var(--color-surface-raised);
+}
+
+.enrichment-shell .bg-surface-sunken {
+  background: var(--color-surface-sunken);
+}
+
+.enrichment-shell .border-base {
+  border-color: var(--color-border-base);
+}
+
+/* 3D Model Viewer Background */
+.enrichment-shell .model-viewer-container {
+  background: radial-gradient(circle at center, #163c8a 0%, #050e24 72%);
+  position: relative;
+}
+
+.enrichment-shell .model-viewer-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 30% 30%, rgba(48, 118, 255, 0.22) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 70%, rgba(23, 105, 255, 0.12) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.enrichment-shell .local-nebula {
+  display: none;
+}
+
+.enrichment-shell .ui-spinner {
+  animation: ui-spin 0.8s linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  border-top-color: var(--color-accent);
+  display: inline-block;
+  height: 18px;
+  width: 18px;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.enrichment-shell .modal-backdrop {
+  align-items: center;
+  background: rgba(2, 6, 23, 0.72);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 60;
+}
+
+.enrichment-shell .modal-panel {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-base);
+  border-radius: 8px;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 24px;
+}
+
+.enrichment-shell .studio-intro {
+  min-height: 155px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(121, 164, 255, 0.17);
+  border-radius: 18px;
+  background: linear-gradient(100deg, rgba(7, 22, 52, 0.92), rgba(8, 28, 67, 0.7));
+}
+
+.enrichment-shell .studio-intro p {
+  color: #71a2ff;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.18em;
+  margin: 0 0 10px;
+}
+
+.enrichment-shell .studio-intro h1 {
+  color: #f8fbff;
+  font-size: clamp(28px, 3vw, 42px);
+  letter-spacing: -0.045em;
+  line-height: 1.03;
+  margin: 0;
+  max-width: 660px;
+}
+
+.enrichment-shell .studio-intro span {
+  display: block;
+  color: #aab9d7;
+  font-size: 15px;
+  line-height: 1.5;
+  margin-top: 12px;
+  max-width: 620px;
+}
+
+.enrichment-shell .studio-orbit {
+  width: 270px;
+  height: 270px;
+  flex: none;
+  margin-right: -75px;
+  border: 1px solid rgba(117, 161, 255, 0.55);
+  border-radius: 50%;
+  box-shadow: 0 0 0 28px rgba(26, 94, 235, 0.08), 0 0 85px rgba(22, 99, 255, 0.48);
+  transform: rotate(-23deg);
+}
+
+.enrichment-shell section {
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.15);
+}
+
+.enrichment-shell input,
+.enrichment-shell textarea,
+.enrichment-shell select {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.enrichment-shell input:focus,
+.enrichment-shell textarea:focus,
+.enrichment-shell select:focus {
+  outline: none;
+  border-color: rgba(74, 133, 255, 0.9) !important;
+  box-shadow: 0 0 0 3px rgba(30, 105, 255, 0.15);
+}
+
+@media (max-width: 800px) {
+  .enrichment-shell .workbench-main {
+    padding: 8px 16px 32px;
+  }
+
+  .enrichment-shell .workbench-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .enrichment-shell .generated-visuals-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .enrichment-shell .studio-intro {
+    padding: 22px;
+    min-height: 0;
+  }
+
+  .enrichment-shell .studio-orbit {
+    display: none;
+  }
+
+  .enrichment-shell .app-bar {
+    padding: 0 16px;
+  }
+
+  .enrichment-shell .app-bar .system-health {
+    display: none;
+  }
+}

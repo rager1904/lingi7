@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/globals.css";
+import "./styles/enrichment.css";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },

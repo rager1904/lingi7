@@ -23,12 +23,16 @@ from rest_framework.views import APIView
 
 from apps.products.enrichment import CatalogEnrichmentService
 from apps.products.models import Product
+from apps.products.permissions import IsVendor
+from apps.users.permissions import IsAdmin
 
 logger = logging.getLogger(__name__)
 
+INTERNAL_KEY_HEADER = "X-Internal-Api-Key"
+
 
 class EnrichmentWorkbenchProxy(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsVendor | IsAdmin]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "ai"
     upstream_path = ""
@@ -52,6 +56,14 @@ class EnrichmentWorkbenchProxy(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
+        internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+        if not internal_key:
+            return Response(
+                {"detail": "Catalog enrichment service is not configured for internal calls."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        headers = {INTERNAL_KEY_HEADER: internal_key}
+
         product_id = request.data.get("product_id") if hasattr(request, "data") else None
         product = None
         if self.attach_product and product_id:
@@ -72,6 +84,7 @@ class EnrichmentWorkbenchProxy(APIView):
             response = requests.request(
                 method,
                 f"{base_url}{self.upstream_path}",
+                headers=headers,
                 data=data if method != "get" else None,
                 files=files or None,
                 timeout=getattr(settings, "CATALOG_ENRICHMENT_SERVICE_TIMEOUT", 45),

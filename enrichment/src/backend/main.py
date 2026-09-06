@@ -2,13 +2,14 @@
 
 import asyncio
 import base64
+import hmac
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 import httpx
 from openai import APIConnectionError
@@ -39,17 +40,32 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://frontend:3000",
-        "http://catalog-enrichment-frontend:3000"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# The enrichment service is an internal model/workflow service reached only
+# by the Lingi7 Django gateway (and container health checks). Every request
+# except /health must present the shared internal service key.
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+
+
+@app.middleware("http")
+async def require_internal_api_key(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    if not INTERNAL_API_KEY:
+        logger.warning("Rejecting %s: INTERNAL_API_KEY is not configured.", request.url.path)
+        return JSONResponse(
+            {"detail": "Internal service key is not configured."},
+            status_code=503,
+        )
+
+    supplied = request.headers.get("X-Internal-Api-Key", "")
+    if not hmac.compare_digest(supplied, INTERNAL_API_KEY):
+        logger.warning(
+            "Rejecting %s: missing or invalid X-Internal-Api-Key.", request.url.path
+        )
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+    return await call_next(request)
 
 @app.get("/")
 async def homepage() -> PlainTextResponse:

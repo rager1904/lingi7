@@ -1,60 +1,66 @@
-import { Card, Stack, Text, Flex, FormField, TextInput, TextArea, Tabs, Accordion, Spinner } from '@/ui-kit';
-import { ProductFields, AugmentedData, PolicyDecision, FAQ } from '@/types';
-import type { ProtocolSchemas } from '@/lib/api';
-import { ProcessingSteps } from './ProcessingSteps';
-import { ProtocolsTabContent } from './ProtocolsTabContent';
+import { Card, Stack, Text, Flex, FormField, TextInput, TextArea, Tabs, Accordion, Spinner } from "./ui-kit";
+import type { ProductFields, AugmentedData, PolicyDecision, FAQ } from "../../types/enrichment";
+import type { ProtocolSchemas } from "../../api/enrichment";
+import { ProcessingSteps } from "./ProcessingSteps";
+import { ProtocolsTabContent } from "./ProtocolsTabContent";
 
 function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
-  const isFail = decision.status === 'fail';
+  const isFail = decision.status === "fail";
 
   const colors = isFail
     ? {
-        border: 'rgba(255, 84, 89, 0.30)',
-        bg: 'rgba(255, 84, 89, 0.06)',
-        icon: 'rgba(255, 84, 89, 0.12)',
-        iconStroke: '#FF5459',
-        accent: '#FF5459',
-        badgeText: '#FFB4B6',
-        badgeBg: 'rgba(255, 84, 89, 0.16)',
-        badgeBorder: 'rgba(255, 84, 89, 0.35)',
-        mutedText: 'rgba(255, 180, 182, 0.7)',
+        border: "rgba(255, 84, 89, 0.30)",
+        bg: "rgba(255, 84, 89, 0.06)",
+        icon: "rgba(255, 84, 89, 0.12)",
+        iconStroke: "#FF5459",
+        accent: "#FF5459",
+        badgeText: "#FFB4B6",
+        badgeBg: "rgba(255, 84, 89, 0.16)",
+        badgeBorder: "rgba(255, 84, 89, 0.35)",
+        mutedText: "rgba(255, 180, 182, 0.7)",
       }
     : {
-        border: 'rgba(118, 185, 0, 0.30)',
-        bg: 'rgba(118, 185, 0, 0.06)',
-        icon: 'rgba(118, 185, 0, 0.12)',
-        iconStroke: '#76B900',
-        accent: '#76B900',
-        badgeText: '#B8E86B',
-        badgeBg: 'rgba(118, 185, 0, 0.16)',
-        badgeBorder: 'rgba(118, 185, 0, 0.35)',
-        mutedText: 'rgba(184, 232, 107, 0.7)',
+        border: "rgba(118, 185, 0, 0.30)",
+        bg: "rgba(118, 185, 0, 0.06)",
+        icon: "rgba(118, 185, 0, 0.12)",
+        iconStroke: "#76B900",
+        accent: "#76B900",
+        badgeText: "#B8E86B",
+        badgeBg: "rgba(118, 185, 0, 0.16)",
+        badgeBorder: "rgba(118, 185, 0, 0.35)",
+        mutedText: "rgba(184, 232, 107, 0.7)",
       };
 
   return (
     <div
       style={{
         border: `1px solid ${colors.border}`,
-        borderRadius: '16px',
+        borderRadius: "16px",
         background: colors.bg,
-        padding: '20px',
+        padding: "20px",
       }}
     >
-      <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+      <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
         <div
           style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
+            width: "40px",
+            height: "40px",
+            borderRadius: "12px",
             background: colors.icon,
-            display: 'grid',
-            placeItems: 'center',
+            display: "grid",
+            placeItems: "center",
             flexShrink: 0,
           }}
         >
           {isFail ? (
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M8.57 3.22L1.52 14.5a1.67 1.67 0 001.43 2.5h14.1a1.67 1.67 0 001.43-2.5L11.43 3.22a1.67 1.67 0 00-2.86 0z" stroke={colors.iconStroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M8.57 3.22L1.52 14.5a1.67 1.67 0 001.43 2.5h14.1a1.67 1.67 0 001.43-2.5L11.43 3.22a1.67 1.67 0 00-2.86 0z"
+                stroke={colors.iconStroke}
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
               <path d="M10 7.5v3.33M10 14.17h.008" stroke={colors.iconStroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           ) : (
@@ -66,9 +72,12 @@ function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Flex justify="between" align="start" style={{ marginBottom: '8px' }}>
+          <Flex justify="between" align="start" style={{ marginBottom: "8px" }}>
             <Stack gap="1">
-              <Text kind="body/regular/sm" style={{ color: colors.mutedText, letterSpacing: '0.08em', textTransform: 'uppercase', fontSize: '11px' }}>
+              <Text
+                kind="body/regular/sm"
+                style={{ color: colors.mutedText, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: "11px" }}
+              >
                 Policy Compliance
               </Text>
               <Text kind="body/semibold/md" className="text-primary">
@@ -80,15 +89,15 @@ function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
                 color: colors.badgeText,
                 backgroundColor: colors.badgeBg,
                 border: `1px solid ${colors.badgeBorder}`,
-                padding: '6px 12px',
-                borderRadius: '999px',
-                fontSize: '12px',
+                padding: "6px 12px",
+                borderRadius: "999px",
+                fontSize: "12px",
                 fontWeight: 600,
-                whiteSpace: 'nowrap',
+                whiteSpace: "nowrap",
                 flexShrink: 0,
               }}
             >
-              {isFail ? 'Does not comply' : 'Complies'}
+              {isFail ? "Does not comply" : "Complies"}
             </span>
           </Flex>
 
@@ -104,7 +113,7 @@ function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
 function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean }) {
   if (isLoading) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
+      <div style={{ padding: "40px", textAlign: "center" }}>
         <Spinner size="large" description="Generating FAQs..." />
       </div>
     );
@@ -112,7 +121,7 @@ function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean 
 
   if (!faqs || faqs.length === 0) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center' }}>
+      <div style={{ padding: "24px", textAlign: "center" }}>
         <Text kind="body/regular/md" className="text-secondary">
           No FAQs generated yet. Run analysis to generate product FAQs.
         </Text>
@@ -121,7 +130,7 @@ function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean 
   }
 
   return (
-    <div style={{ paddingTop: '16px' }}>
+    <div style={{ paddingTop: "16px" }}>
       <Accordion
         multiple
         items={faqs.map((faq, index) => ({
@@ -131,11 +140,11 @@ function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean 
             </Text>
           ),
           slotContent: (
-            <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+            <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: "pre-line", lineHeight: 1.6 }}>
               {faq.answer}
             </Text>
           ),
-          value: String(index)
+          value: String(index),
         }))}
       />
     </div>
@@ -153,14 +162,21 @@ interface Props {
   onFieldChange: (field: keyof ProductFields, value: string) => void;
 }
 
-export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, isLoadingFaqs, protocolSchemas, isLoadingProtocols, onFieldChange }: Props) {
+export function FieldsCard({
+  fields,
+  augmentedData,
+  isAnalyzing,
+  isGenerating,
+  isLoadingFaqs,
+  protocolSchemas,
+  isLoadingProtocols,
+  onFieldChange,
+}: Props) {
   const disabled = isAnalyzing || isGenerating;
 
   const detailsContent = (
     <Stack gap="4">
-      {augmentedData?.policyDecision && (
-        <PolicyComplianceCard decision={augmentedData.policyDecision} />
-      )}
+      {augmentedData?.policyDecision && <PolicyComplianceCard decision={augmentedData.policyDecision} />}
 
       <div>
         <FormField slotLabel="Title">
@@ -170,13 +186,13 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
               placeholder=""
               size="medium"
               value={fields.title}
-              onChange={(e: any) => onFieldChange('title', e.target.value)}
+              onChange={(e: any) => onFieldChange("title", e.target.value)}
               disabled={disabled}
             />
           )}
         </FormField>
         {augmentedData && (
-          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+          <div className="mt-2 p-3 rounded-lg border bg-surface-sunken" style={{ borderColor: "var(--color-border-base)" }}>
             <Stack gap="2">
               <Text kind="body/semibold/md" className="open-source-green-text">Augmented:</Text>
               <Text kind="body/regular/md" className="text-primary">{augmentedData.title}</Text>
@@ -194,19 +210,19 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
               size="medium"
               resizeable="manual"
               value={fields.description}
-              onChange={(e: any) => onFieldChange('description', e.target.value)}
+              onChange={(e: any) => onFieldChange("description", e.target.value)}
               disabled={disabled}
               attributes={{
-                TextAreaElement: { rows: 3 }
+                TextAreaElement: { rows: 3 },
               }}
             />
           )}
         </FormField>
         {augmentedData && (
-          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+          <div className="mt-2 p-3 rounded-lg border bg-surface-sunken" style={{ borderColor: "var(--color-border-base)" }}>
             <Stack gap="2">
               <Text kind="body/semibold/md" className="open-source-green-text">Augmented:</Text>
-              <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: 'pre-line' }}>
+              <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: "pre-line" }}>
                 {augmentedData.description}
               </Text>
             </Stack>
@@ -222,16 +238,16 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
               placeholder=""
               size="medium"
               value={fields.color}
-              onChange={(e: any) => onFieldChange('color', e.target.value)}
+              onChange={(e: any) => onFieldChange("color", e.target.value)}
               disabled={disabled}
             />
           )}
         </FormField>
         {augmentedData && augmentedData.colors.length > 0 && (
-          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+          <div className="mt-2 p-3 rounded-lg border bg-surface-sunken" style={{ borderColor: "var(--color-border-base)" }}>
             <Stack gap="2">
               <Text kind="body/semibold/md" className="open-source-green-text">Augmented:</Text>
-              <Text kind="body/regular/md" className="text-primary">{augmentedData.colors.join(', ')}</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.colors.join(", ")}</Text>
             </Stack>
           </div>
         )}
@@ -245,16 +261,16 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
               placeholder=""
               size="medium"
               value={fields.categories}
-              onChange={(e: any) => onFieldChange('categories', e.target.value)}
+              onChange={(e: any) => onFieldChange("categories", e.target.value)}
               disabled={disabled}
             />
           )}
         </FormField>
         {augmentedData?.categories && augmentedData.categories.length > 0 && (
-          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+          <div className="mt-2 p-3 rounded-lg border bg-surface-sunken" style={{ borderColor: "var(--color-border-base)" }}>
             <Stack gap="2">
               <Text kind="body/semibold/md" className="open-source-green-text">Augmented:</Text>
-              <Text kind="body/regular/md" className="text-primary">{augmentedData.categories.join(', ')}</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.categories.join(", ")}</Text>
             </Stack>
           </div>
         )}
@@ -268,16 +284,16 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
               placeholder=""
               size="medium"
               value={fields.tags}
-              onChange={(e: any) => onFieldChange('tags', e.target.value)}
+              onChange={(e: any) => onFieldChange("tags", e.target.value)}
               disabled={disabled}
             />
           )}
         </FormField>
         {augmentedData && augmentedData.tags.length > 0 && (
-          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+          <div className="mt-2 p-3 rounded-lg border bg-surface-sunken" style={{ borderColor: "var(--color-border-base)" }}>
             <Stack gap="2">
               <Text kind="body/semibold/md" className="open-source-green-text">Augmented:</Text>
-              <Text kind="body/regular/md" className="text-primary">{augmentedData.tags.join(', ')}</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.tags.join(", ")}</Text>
             </Stack>
           </div>
         )}
@@ -301,18 +317,26 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
               {
                 children: "Details",
                 value: "details",
-                slotContent: <div style={{ width: '100%' }}>{detailsContent}</div>
+                slotContent: <div style={{ width: "100%" }}>{detailsContent}</div>,
               },
               {
                 children: "FAQs",
                 value: "faqs",
-                slotContent: <div style={{ width: '100%' }}><FaqTabContent faqs={augmentedData?.faqs} isLoading={isLoadingFaqs} /></div>
+                slotContent: (
+                  <div style={{ width: "100%" }}>
+                    <FaqTabContent faqs={augmentedData?.faqs} isLoading={isLoadingFaqs} />
+                  </div>
+                ),
               },
               {
                 children: "Protocols",
                 value: "protocols",
-                slotContent: <div style={{ width: '100%' }}><ProtocolsTabContent protocolSchemas={protocolSchemas} isLoading={isLoadingProtocols} /></div>
-              }
+                slotContent: (
+                  <div style={{ width: "100%" }}>
+                    <ProtocolsTabContent protocolSchemas={protocolSchemas} isLoading={isLoadingProtocols} />
+                  </div>
+                ),
+              },
             ]}
           />
         )}

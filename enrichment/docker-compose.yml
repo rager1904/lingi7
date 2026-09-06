@@ -24,6 +24,7 @@ services:
       - HF_TOKEN=${HF_TOKEN:-}
       - MILVUS_HOST=${MILVUS_HOST:-milvus-standalone}
       - MILVUS_PORT=${MILVUS_PORT:-19530}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-}
     volumes:
       - ./data/outputs:/app/data/outputs
       - ./data/policies:/app/data/policies

@@ -62,7 +62,7 @@ docker exec lingi7-llama-guard ollama pull llama3.2:3b
 ## Start Application Services
 
 ```powershell
-docker compose up -d enrichment-backend enrichment-frontend
+docker compose up -d enrichment-backend
 docker compose up -d catalog-retriever memory-retriever rails chain-server shopping-frontend
 ```
 
@@ -70,7 +70,7 @@ docker compose up -d catalog-retriever memory-retriever rails chain-server shopp
 
 - `GET /health/`
 - `GET /api/v1/platform/status/`
-- `GET /api/enrichment/health`
+- workbench gateway: `GET /api/v1/products/enrichment-workbench/health/services/` (login as a vendor; enrichment backend is no longer publicly proxied)
 - `GET /api/assistant/health`
 - Open `/dashboard` after login.
 

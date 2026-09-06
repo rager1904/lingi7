@@ -1,7 +1,5 @@
-'use client';
-
-import { Tooltip, Flex } from '@/ui-kit';
-import { AIServiceHealthStatus, HealthState } from '../types';
+import { Tooltip, Flex } from "./ui-kit";
+import type { AIServiceHealthStatus, HealthState } from "../../types/enrichment";
 
 interface HealthIndicatorsProps {
   health: AIServiceHealthStatus;
@@ -14,25 +12,26 @@ interface ServiceIndicatorProps {
 
 function ServiceIndicator({ name, status }: ServiceIndicatorProps) {
   const getColor = () => {
-    if (status === 'healthy') return '#10b981'; // green
-    if (status === 'unhealthy') return '#ef4444'; // red
-    return '#fbbf24'; // yellow for checking
+    if (status === "healthy") return "#10b981"; // green
+    if (status === "unhealthy") return "#ef4444"; // red
+    return "#fbbf24"; // yellow for checking
   };
 
-  const message = status === 'healthy' 
-    ? `${name} is healthy`
-    : status === 'unhealthy'
-    ? `${name} is unhealthy`
-    : `${name} is checking...`;
+  const message =
+    status === "healthy"
+      ? `${name} is healthy`
+      : status === "unhealthy"
+        ? `${name} is unhealthy`
+        : `${name} is checking...`;
 
   return (
     <Tooltip slotContent={message}>
-      <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+      <div style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
         <div
           style={{
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
+            width: "10px",
+            height: "10px",
+            borderRadius: "50%",
             backgroundColor: getColor(),
             boxShadow: `0 0 4px ${getColor()}`,
           }}

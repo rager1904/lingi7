@@ -107,11 +107,17 @@ const VendorDashboardPage: React.FC = () => {
       >
         Fulfil orders ({data.orders_pending_shipment}) →
       </Link>
-      <Link
+<Link
         to="/vendor/products"
         className="block rounded-2xl bg-slate-950 p-5 text-center text-sm font-bold text-white shadow-lg hover:bg-blue-700"
       >
         Manage products →
+      </Link>
+      <Link
+        to="/vendor/enrichment"
+        className="block rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-emerald-50 p-5 text-center text-sm font-bold text-blue-800 shadow-sm hover:border-blue-300 hover:from-blue-100 hover:to-emerald-100"
+      >
+        Enrich listings with AI studio →
       </Link>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[["Inventory", "/vendor/inventory"], ["Customers", "/vendor/customers"], ["Coupons", "/vendor/coupons"], ["Discounts", "/vendor/discounts"], ["Reviews", "/vendor/reviews"]].map(([label, href]) => <Link key={href} to={href} className="rounded-2xl border border-slate-200 bg-white p-4 text-center text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:text-blue-700">{label}</Link>)}

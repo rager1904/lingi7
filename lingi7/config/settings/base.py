@@ -387,7 +387,9 @@ AIRTEL_COUNTRY = config("AIRTEL_COUNTRY", default="ZM")
 ML_FRAUD_MODEL_PATH = config("ML_FRAUD_MODEL_PATH", default="ml/fraud/models/fraud_model_v1.joblib")
 ML_FRAUD_SCORE_THRESHOLD = config("ML_FRAUD_SCORE_THRESHOLD", default=0.65, cast=float)
 
-# Internal service API key (for fraud scoring endpoint)
+# Internal service API key. Sent by Django as `X-Internal-Api-Key` when
+# calling internal model services (catalog enrichment) and required by those
+# services on every non-health endpoint.
 INTERNAL_API_KEY = config("INTERNAL_API_KEY", default="")
 
 # Maximum upload size (10 MB) — enforced in serializers + upload validators

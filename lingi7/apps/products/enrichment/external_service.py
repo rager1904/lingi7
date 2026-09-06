@@ -31,6 +31,14 @@ class ExternalCatalogEnrichmentClient:
         if not primary or not primary.image:
             return None
 
+        internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+        if not internal_key:
+            logger.info(
+                "INTERNAL_API_KEY not configured; skipping standalone enrichment for product=%s.",
+                product.pk,
+            )
+            return None
+
         product_data = {
             "id": product.pk,
             "title": product.name,
@@ -58,6 +66,7 @@ class ExternalCatalogEnrichmentClient:
                 }
                 response = requests.post(
                     f"{self.base_url}/vlm/analyze",
+                    headers={"X-Internal-Api-Key": internal_key},
                     files=files,
                     data=data,
                     timeout=self.timeout,

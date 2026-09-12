@@ -451,9 +451,18 @@ const VendorProductsPage: React.FC = () => {
       {products.length === 0 ? (
         <div className="card p-6 text-center text-sm text-gray-500">
           <p>No listings yet.</p>
-          <Link to="/vendor/store" className="mt-2 inline-block text-emerald-600 font-medium">
-            Register your store first →
-          </Link>
+          {storeStatus === null ? (
+            <Link to="/vendor/store" className="mt-2 inline-block text-emerald-600 font-medium">
+              Register your store first →
+            </Link>
+          ) : (
+            <button
+              onClick={() => setShowForm(true)}
+              className="mt-2 inline-block text-emerald-600 font-medium"
+            >
+              Add your first product →
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-2">

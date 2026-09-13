@@ -22,6 +22,9 @@ import type {
 
 const ENRICHMENT_BASE = "/products/enrichment-workbench";
 
+// VLM / LLM / diffusion inference can take well over 30s on a cold Colab runtime.
+const AI_REQUEST_TIMEOUT = 120_000;
+
 function parseErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === "object" && "message" in err) {
     return String((err as { message: unknown }).message) || fallback;
@@ -60,7 +63,7 @@ export async function analyzeImage({
   try {
     const { data } = await apiClient.post<
       AugmentedData & { policy_decision?: PolicyDecision }
-    >(`${ENRICHMENT_BASE}/analyze/`, formData);
+    >(`${ENRICHMENT_BASE}/analyze/`, formData, { timeout: AI_REQUEST_TIMEOUT });
     return {
       title: data.title ?? "",
       description: data.description ?? "",
@@ -101,7 +104,8 @@ export async function generateFaqs(
   try {
     const { data } = await apiClient.post<{ faqs?: { question: string; answer: string }[] }>(
       `${ENRICHMENT_BASE}/faqs/`,
-      formData
+      formData,
+      { timeout: AI_REQUEST_TIMEOUT }
     );
     return data.faqs || [];
   } catch (err) {
@@ -124,7 +128,8 @@ export async function extractManualKnowledge(
   try {
     const { data } = await apiClient.post<ManualExtractResult>(
       `${ENRICHMENT_BASE}/manual/extract/`,
-      formData
+      formData,
+      { timeout: AI_REQUEST_TIMEOUT }
     );
     return data;
   } catch (err) {
@@ -157,7 +162,7 @@ export async function uploadPolicies(
     const { data } = await apiClient.post<{
       documents: PolicyDocument[];
       results: PolicyUploadResult[];
-    }>(`${ENRICHMENT_BASE}/policies/`, formData);
+    }>(`${ENRICHMENT_BASE}/policies/`, formData, { timeout: AI_REQUEST_TIMEOUT });
     return data;
   } catch (err) {
     throw new Error(parseErrorMessage(err, "Failed to upload policy PDFs"));
@@ -203,7 +208,9 @@ export async function generateImageVariation(
       generated_image_b64?: string | null;
       quality_score?: number | null;
       quality_issues?: string[];
-    }>(`${ENRICHMENT_BASE}/generate/variation/`, formData);
+    }>(`${ENRICHMENT_BASE}/generate/variation/`, formData, {
+      timeout: AI_REQUEST_TIMEOUT,
+    });
 
     return {
       imageUrl: data.generated_image_b64
@@ -229,7 +236,7 @@ export async function generate3DModel(file: File): Promise<string | null> {
     const { data } = await apiClient.post<{ glb_base64?: string | null }>(
       `${ENRICHMENT_BASE}/generate/3d/`,
       formData,
-      { timeout: 120_000 }
+      { timeout: AI_REQUEST_TIMEOUT }
     );
     return data.glb_base64 ? `data:model/gltf-binary;base64,${data.glb_base64}` : null;
   } catch (err) {
@@ -310,7 +317,8 @@ export async function generateProtocolSchemas(
   try {
     const { data } = await apiClient.post<ProtocolSchemas>(
       `${ENRICHMENT_BASE}/protocols/generate/`,
-      formData
+      formData,
+      { timeout: AI_REQUEST_TIMEOUT }
     );
     return data;
   } catch (err) {

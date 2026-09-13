@@ -409,3 +409,50 @@ class InventoryRecord(models.Model):
         if not self.track_inventory:
             return True
         return self.quantity_available > 0 or self.allow_backorder
+
+
+class EnrichmentJob(models.Model):
+    """
+    Async catalog-enrichment request processed by a background worker thread.
+
+    The workbench VLM/LLM pipeline can run for minutes on CPU-only runtimes
+    (e.g. Colab), so image analysis is queued here and polled by the UI instead
+    of blocking an HTTP request until a client-side timeout kills the flow.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PROCESSING = "PROCESSING", "Processing"
+        RESOLVED = "RESOLVED", "Resolved"
+        FAILED = "FAILED", "Failed"
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="enrichment_jobs",
+    )
+    product = models.ForeignKey(
+        "Product",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="enrichment_jobs",
+    )
+    image = models.FileField(upload_to="enrichment_jobs/", null=True, blank=True)
+    locale = models.CharField(max_length=16, default="en-US")
+    product_data = models.JSONField(null=True, blank=True)
+    brand_instructions = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    result = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Enrichment #{self.pk}: {self.status}"

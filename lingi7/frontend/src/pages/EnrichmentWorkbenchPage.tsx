@@ -65,9 +65,9 @@ export default function EnrichmentWorkbenchPage() {
   const [qualityIssues, setQualityIssues] = useState<(string[] | null)[]>([null, null]);
   const [generated3DModel, setGenerated3DModel] = useState<string | null>(null);
   const [model3DError, setModel3DError] = useState<string | null>(null);
-  const [enableVariation1, setEnableVariation1] = useState<boolean>(true);
-  const [enableVariation2, setEnableVariation2] = useState<boolean>(true);
-  const [enable3D, setEnable3D] = useState<boolean>(true);
+  const [enableVariation1, setEnableVariation1] = useState<boolean>(false);
+  const [enableVariation2, setEnableVariation2] = useState<boolean>(false);
+  const [enable3D, setEnable3D] = useState<boolean>(false);
   const [manualKnowledge, setManualKnowledge] = useState<ManualKnowledge | null>(null);
   const [manualFilename, setManualFilename] = useState<string | null>(null);
   const [manualChunkCount, setManualChunkCount] = useState<number | null>(null);
@@ -152,9 +152,9 @@ export default function EnrichmentWorkbenchPage() {
       price: "",
       brandInstructions: "",
     });
-    setEnableVariation1(true);
-    setEnableVariation2(true);
-    setEnable3D(true);
+    setEnableVariation1(false);
+    setEnableVariation2(false);
+    setEnable3D(false);
     setManualKnowledge(null);
     setManualFilename(null);
     setManualChunkCount(null);

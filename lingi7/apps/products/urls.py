@@ -76,8 +76,10 @@ urlpatterns = [
     path("enrichment-workbench/policies/", workbench_views.PoliciesView.as_view(), name="enrichment-workbench-policies"),
     path("enrichment-workbench/generate/variation/", workbench_views.VariationView.as_view(), name="enrichment-workbench-variation"),
     path("enrichment-workbench/generate/3d/", workbench_views.Generate3DView.as_view(), name="enrichment-workbench-3d"),
-    path("enrichment-workbench/protocols/generate/", workbench_views.ProtocolsView.as_view(), name="enrichment-workbench-protocols"),
+path("enrichment-workbench/protocols/generate/", workbench_views.ProtocolsView.as_view(), name="enrichment-workbench-protocols"),
     path("enrichment-workbench/health/services/", workbench_views.ServicesHealthView.as_view(), name="enrichment-workbench-health"),
+    path("enrichment-workbench/analyze-jobs/", workbench_views.AnalyzeJobCreateView.as_view(), name="enrichment-workbench-analyze-jobs"),
+    path("enrichment-workbench/analyze-jobs/<int:pk>/", workbench_views.AnalyzeJobDetailView.as_view(), name="enrichment-workbench-analyze-job-detail"),
 
     # Admin
     path("admin/", include(admin_router.urls)),

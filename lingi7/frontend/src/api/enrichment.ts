@@ -61,17 +61,46 @@ export async function analyzeImage({
   }
 
   try {
-    const { data } = await apiClient.post<
-      AugmentedData & { policy_decision?: PolicyDecision }
-    >(`${ENRICHMENT_BASE}/analyze/`, formData, { timeout: AI_REQUEST_TIMEOUT });
-    return {
-      title: data.title ?? "",
-      description: data.description ?? "",
-      colors: data.colors ?? [],
-      tags: data.tags ?? [],
-      categories: data.categories,
-      policyDecision: data.policy_decision,
-    };
+    // Queue the analysis — the VLM/LLM pipeline can run for minutes on
+    // CPU-only runtimes (e.g. Colab), so we poll instead of holding a request.
+    const { data: created } = await apiClient.post<{
+      job_id: number;
+      status: string;
+    }>(`${ENRICHMENT_BASE}/analyze-jobs/`, formData);
+
+    const jobId = created.job_id;
+    const startedAt = Date.now();
+    const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes
+    const POLL_MS = 2_000;
+
+    for (;;) {
+      const { data: job } = await apiClient.get<{
+        job_id: number;
+        status: string;
+        result?: AugmentedData & { policy_decision?: PolicyDecision };
+        error?: string;
+      }>(`${ENRICHMENT_BASE}/analyze-jobs/${jobId}/`);
+
+      if (job.status === "RESOLVED") {
+        const result = job.result;
+        const data: AugmentedData = {
+          title: result?.title ?? "",
+          description: result?.description ?? "",
+          colors: result?.colors ?? [],
+          tags: result?.tags ?? [],
+          categories: result?.categories,
+          policyDecision: result?.policy_decision,
+        };
+        return data;
+      }
+      if (job.status === "FAILED") {
+        throw new Error(job.error || "Image analysis failed");
+      }
+      if (Date.now() - startedAt > MAX_WAIT_MS) {
+        throw new Error("Image analysis timed out in the background queue");
+      }
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
   } catch (err) {
     throw new Error(parseErrorMessage(err, "Failed to analyze image"));
   }

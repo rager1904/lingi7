@@ -8,13 +8,19 @@ and assistant indexing stay centralized.
 
 from __future__ import annotations
 
+import json
 import logging
+import threading
+from pathlib import Path
 from typing import Any
 
 import requests
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.core.files.base import ContentFile
+from django.db import close_old_connections
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -22,7 +28,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.products.enrichment import CatalogEnrichmentService
-from apps.products.models import Product
+from apps.products.models import EnrichmentJob, Product
 from apps.products.permissions import IsVendor
 from apps.users.permissions import IsAdmin
 
@@ -198,3 +204,154 @@ class ProtocolsView(EnrichmentWorkbenchProxy):
 
 class ServicesHealthView(EnrichmentWorkbenchProxy):
     upstream_path = "/health/services"
+
+
+def _run_analyze_job(job_id: int) -> None:
+    """Background worker that executes a queued VLM analyze request.
+
+    Runs in a daemon thread so long-running CPU inference never blocks the
+    request that created the job. The UI polls the job until it resolves.
+    """
+    close_old_connections()
+    job = EnrichmentJob.objects.filter(pk=job_id).first()
+    if job is None:
+        return
+    job.status = EnrichmentJob.Status.PROCESSING
+    job.attempts += 1
+    job.save(update_fields=["status", "attempts", "updated_at"])
+
+    base_url = str(settings.CATALOG_ENRICHMENT_SERVICE_URL).rstrip("/")
+    try:
+        headers = {INTERNAL_KEY_HEADER: settings.INTERNAL_API_KEY}
+        data: dict[str, Any] = {"locale": job.locale}
+        if job.product_data is not None:
+            data["product_data"] = json.dumps(job.product_data)
+        if job.brand_instructions:
+            data["brand_instructions"] = job.brand_instructions
+
+        image_path = Path(job.image.path) if job.image else None
+        if image_path is not None and image_path.exists():
+            files = [("image", (image_path.name, image_path.open("rb"), "image/jpeg"))]
+        else:
+            files = None
+
+        timeout = getattr(settings, "CATALOG_ENRICHMENT_SERVICE_TIMEOUT", 45)
+        response = requests.post(
+            f"{base_url}/vlm/analyze",
+            headers=headers,
+            data=data,
+            files=files,
+            timeout=timeout,
+        )
+
+        if response.ok:
+            payload = response.json()
+            if job.product_id:
+                try:
+                    CatalogEnrichmentService.apply_external_payload(job.product, payload)
+                except Exception as exc:
+                    logger.warning(
+                        "Enrichment job=%s could not attach payload: %s", job.pk, exc
+                    )
+            job.result = payload
+            job.status = EnrichmentJob.Status.RESOLVED
+        else:
+            job.error = (
+                f"Enrichment service error {response.status_code}: "
+                f"{response.text[:500]}"
+            )
+            job.status = EnrichmentJob.Status.FAILED
+    except Exception as exc:
+        logger.exception("Enrichment job=%s failed: %s", job.pk, exc)
+        job.error = str(exc)[:2000]
+        job.status = EnrichmentJob.Status.FAILED
+    finally:
+        job.save(update_fields=["status", "result", "error", "updated_at"])
+        if files:
+            for _, handle in files:
+                handle[1].close()
+        close_old_connections()
+
+
+class AnalyzeJobCreateView(APIView):
+    """
+    POST /api/v1/products/enrichment-workbench/analyze-jobs/
+
+    Queue an image so the VLM/LLM pipeline can fill product fields asynchronously.
+    Returns immediately with a job id; poll the detail endpoint for the result.
+    """
+
+    permission_classes = [IsAuthenticated, IsVendor | IsAdmin]
+
+    def post(self, request, *args: Any, **kwargs: Any) -> Response:
+        uploaded = request.FILES.get("image")
+        if uploaded is None:
+            return Response(
+                {"detail": "An image is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if uploaded.size > 10 * 1024 * 1024:
+            return Response(
+                {"detail": "Image must be smaller than 10MB."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        product_id_raw = request.data.get("product_id")
+        product = None
+        if product_id_raw:
+            try:
+                product_id = int(product_id_raw)
+                queryset = Product.objects.all()
+                if not request.user.is_staff:
+                    queryset = queryset.filter(store__owner=request.user)
+                product = queryset.filter(pk=product_id).first()
+            except (TypeError, ValueError):
+                product = None
+
+        product_data = request.data.get("product_data")
+        if isinstance(product_data, str):
+            try:
+                product_data = json.loads(product_data)
+            except ValueError:
+                product_data = None
+        if not isinstance(product_data, dict):
+            product_data = None
+
+        job = EnrichmentJob.objects.create(
+            owner=request.user,
+            product=product,
+            locale=request.data.get("locale", "en-US") or "en-US",
+            product_data=product_data,
+            brand_instructions=request.data.get("brand_instructions", "") or "",
+            status=EnrichmentJob.Status.PENDING,
+        )
+        job.image.save(f"encode-{job.pk}", ContentFile(uploaded.read()))
+
+        threading.Thread(target=_run_analyze_job, args=(job.pk,), daemon=True).start()
+
+        return Response(
+            {"job_id": job.pk, "status": job.status},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AnalyzeJobDetailView(APIView):
+    """
+    GET /api/v1/products/enrichment-workbench/analyze-jobs/{pk}/
+
+    Return job state. Once RESOLVED, `result` carries the extracted fields.
+    """
+
+    permission_classes = [IsAuthenticated, IsVendor | IsAdmin]
+
+    def get(self, request, pk: int, *args: Any, **kwargs: Any) -> Response:
+        queryset = EnrichmentJob.objects.select_related("product")
+        if not request.user.is_staff:
+            queryset = queryset.filter(owner=request.user)
+        job = get_object_or_404(queryset, pk=pk)
+
+        payload: dict[str, Any] = {"job_id": job.pk, "status": job.status}
+        if job.status == EnrichmentJob.Status.RESOLVED:
+            payload["result"] = job.result
+        if job.status == EnrichmentJob.Status.FAILED:
+            payload["error"] = job.error
+        return Response(payload)

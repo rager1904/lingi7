@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lingi7 — GPU host override for docker-compose.yml
+#
+# Used ONLY on the Oracle GPU instance. Builds and runs FLUX + TRELLIS from the
+# shared root compose file, but additionally maps their ports to the host so the
+# CPU instance can reach them over the network:
+#
+#   flux   :8030  -> /v1/infer   (image generation)
+#   trellis:8031  -> /v1/infer   (3D asset generation)
+#
+# Usage on the GPU host (from the repo root):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#     up -d --build flux trellis
+#
+# NOTE: FLUX.1-schnell is gated on HuggingFace. Accept its licence in the HF
+# web UI and provide HF_TOKEN, or the image servers will 401 at startup.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  flux:
+    ports:
+      - "8030:8000"
+    volumes:
+      - flux_model_cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+  trellis:
+    ports:
+      - "8031:8000"
+    volumes:
+      - trellis_model_cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  flux_model_cache:
+  trellis_model_cache:

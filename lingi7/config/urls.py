@@ -47,9 +47,6 @@ admin.site.index_title = "Platform Management"
 
 # ── URL patterns ──────────────────────────────────────────────────────────────
 urlpatterns = [
-    # Debug endpoint (temporary)
-    path("_debug/register/", _debug_register, name="debug-register"),
-
     # Admin
     path("admin/", admin.site.urls),
 
@@ -72,6 +69,10 @@ urlpatterns = [
     path("api/v1/cart/",          include("apps.cart.urls")),
     path("api/v1/platform/",      platform_status, name="platform-status"),
 ]
+
+# ── Temporary debug endpoint — development only, never in production ─────────
+if settings.DEBUG:
+    urlpatterns.insert(0, path("_debug/register/", _debug_register, name="debug-register"))
 
 # ── OpenAPI docs — only available in non-production ───────────────────────────
 if settings.DEBUG:

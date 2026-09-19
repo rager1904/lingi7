@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# Lingi7 — Deploy the full CPU stack on the Oracle Always-Free ARM instance.
+#
+# Starts every service in docker-compose.yml EXCEPT flux and trellis, which
+# live on the separate GPU host. Safe to re-run (idempotent).
+#
+# Usage:
+#   bash deploy-cpu.sh <CPU_PUBLIC_IP> [GPU_PUBLIC_IP]
+#
+#   CPU_PUBLIC_IP  public IP of THIS ARM instance (Django ALLOWED_HOSTS)
+#   GPU_PUBLIC_IP  optional; if given, points FLUX/TRELLIS at the GPU host
+#
+# Prereqs: install-docker.sh already ran, repo cloned at /opt/lingi7
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+CPU_IP="${1:-}"
+GPU_IP="${2:-}"
+
+APP_DIR="${APP_DIR:-/opt/lingi7}"
+COMPOSE=(docker compose -f docker-compose.yml)
+OCI_COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.oci.yml)
+
+if [[ -z "$CPU_IP" ]]; then
+  echo "Usage: bash deploy-cpu.sh <CPU_PUBLIC_IP> [GPU_PUBLIC_IP]" >&2
+  exit 1
+fi
+
+if [[ ! -d "$APP_DIR/.git" ]]; then
+  echo "==> Cloning Lingi7 repo"
+  git clone "${GIT_REPO:-https://github.com/rager1904/lingi7.git}" "$APP_DIR"
+  cd "$APP_DIR"
+else
+  cd "$APP_DIR"
+  echo "==> Refreshing repo (fast-forward only)"
+  git fetch origin
+  git pull --ff-only || echo "WARN: pull not fast-forward; continuing with local files"
+fi
+
+# ── 1. Root .env with generated secrets (idempotent) ──────────────────────
+if [[ ! -f .env ]]; then
+  echo "==> Generating .env with fresh secrets"
+  cat > .env <<EOF
+API_KEY=$(openssl rand -hex 32)
+INTERNAL_API_KEY=$(openssl rand -hex 32)
+SECRET_KEY=$(openssl rand -hex 64)
+POSTGRES_DB=lingi7_prod
+POSTGRES_USER=lingi7
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
+MINIO_ROOT_USER=lingi7minio
+MINIO_ROOT_PASSWORD=$(openssl rand -hex 32)
+HF_TOKEN=${HF_TOKEN:-}
+EOF
+  chmod 600 .env
+else
+  echo "==> .env already present (leaving existing secrets in place)"
+fi
+
+# ── 2. Django .env.dev: gitignored, so a fresh clone has none ────────────────
+# Bootstrap it from the committed example template. All security-critical values
+# (SECRET_KEY, DATABASE_URL, INTERNAL_API_KEY) are overridden by docker compose
+# `environment:` from the root .env; everything else stays CHANGE_ME placeholders
+# so no real credentials ever leave this machine.
+ENV_DEV="lingi7/.env.dev"
+if [[ ! -f "$ENV_DEV" ]]; then
+  echo "==> Bootstrapping $ENV_DEV from lingi7/.env.example"
+  cp lingi7/.env.example "$ENV_DEV"
+fi
+sed -i "s/^DJANGO_ALLOWED_HOSTS=.*/DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,${CPU_IP}/" "$ENV_DEV"
+if grep -qE "^INTERNAL_API_KEY=CHANGE_ME" "$ENV_DEV"; then
+  sed -i "s/^INTERNAL_API_KEY=.*/INTERNAL_API_KEY=$(openssl rand -hex 32)/" "$ENV_DEV"
+fi
+if ! grep -q "^CSRF_TRUSTED_ORIGINS=http://${CPU_IP}\$" "$ENV_DEV"; then
+  sed -i "s#^CSRF_TRUSTED_ORIGINS=.*#CSRF_TRUSTED_ORIGINS=http://localhost:8000,http://${CPU_IP}#" "$ENV_DEV"
+fi
+grep -q "^CORS_ALLOWED_ORIGINS=" "$ENV_DEV" \
+  && sed -i "s#^CORS_ALLOWED_ORIGINS=.*#CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://${CPU_IP}#" "$ENV_DEV" \
+  || echo "CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://${CPU_IP}" >> "$ENV_DEV"
+chmod 600 "$ENV_DEV"
+echo "==> DJANGO_ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS / CORS include ${CPU_IP}"
+
+# ── 3. Point enrichment backend at the GPU host (optional) ────────────────
+if [[ -n "$GPU_IP" ]]; then
+  bash oci/scripts/point-flux-trellis-to-gpu.sh "$GPU_IP"
+fi
+
+# ── 4. Validate compose config ────────────────────────────────────────────
+echo "==> Validating docker-compose.yml (+ oci override)"
+"${COMPOSE[@]}" config --quiet
+"${OCI_COMPOSE[@]}" config --quiet
+
+# ── 5. Infrastructure stack ────────────────────────────────────────────────
+echo "==> Starting infrastructure (Postgres, Redis, etcd, MinIO, Milvus)"
+"${COMPOSE[@]}" up -d --wait db redis etcd minio milvus
+
+# ── 6. Model services (CPU-only models) ───────────────────────────────────
+echo "==> Starting Ollama LLM/VLM hosts + embedding servers"
+"${COMPOSE[@]}" up -d --no-deps llm llm-small vlm llama-guard embeddings image-embeddings
+
+echo "==> Pulling Ollama models (this can take several minutes on first run)"
+"${COMPOSE[@]}" exec -T lingi7-llm ollama pull llama3.2:3b || true
+"${COMPOSE[@]}" exec -T lingi7-llm-small ollama pull qwen2.5:3b || true
+"${COMPOSE[@]}" exec -T lingi7-vlm ollama pull llava:7b || true
+"${COMPOSE[@]}" exec -T lingi7-llama-guard ollama pull llama3.2:3b || true
+
+# ── 7. Lingi7 Django + Celery (hardened OCI settings + gunicorn) ──────────
+echo "==> Starting Django web, Celery worker + beat (settings.oci, gunicorn)"
+"${OCI_COMPOSE[@]}" up -d --no-deps lingi7-web lingi7-celery lingi7-beat
+
+# ── 8. Migration (after web is healthy) ───────────────────────────────────
+echo "==> Waiting for Django to be healthy, then migrating"
+"${OCI_COMPOSE[@]}" up -d --wait --no-deps lingi7-web
+"${OCI_COMPOSE[@]}" exec -T lingi7-web python manage.py migrate --noinput || \
+  echo "WARN: migrate failed — retry later with: docker compose -f docker-compose.yml -f docker-compose.oci.yml exec lingi7-web python manage.py migrate"
+
+# ── 9. Enrichment backend (skip flux/trellis deps) ───────────────────────
+echo "==> Starting catalog enrichment backend"
+"${COMPOSE[@]}" up -d --no-deps enrichment-backend
+
+# ── 10. Shopping assistant stack ──────────────────────────────────────────
+echo "==> Starting shopping assistant (retriever, guardrails, chain, UI)"
+"${COMPOSE[@]}" up -d --no-deps catalog-retriever memory-retriever rails chain-server shopping-frontend
+
+# ── 11. Reverse proxy ──────────────────────────────────────────────────────
+echo "==> Starting nginx (media volume mounted)"
+"${OCI_COMPOSE[@]}" up -d --no-deps nginx
+
+cat <<EOF
+
+==========================================================
+  Lingi7 CPU stack started.
+  Access:
+    http://${CPU_IP}/                landing / platform
+    http://${CPU_IP}/admin/           Django admin
+    http://${CPU_IP}/assistant/       shopping assistant UI
+    http://${CPU_IP}/api/assistant/   assistant API
+    http://${CPU_IP}/health/          health check
+
+  Create an admin user when ready:
+    docker compose -f docker-compose.yml -f docker-compose.oci.yml exec lingi7-web python manage.py createsuperuser
+
+  Optional: run the endpoint checks that shipped with this pack:
+    bash oci/scripts/verify.sh ${CPU_IP}
+
+  Do NOT run bare 'docker compose up -d' on this host — it would try to
+  start flux/trellis, which belong to the GPU host.
+==========================================================
+EOF

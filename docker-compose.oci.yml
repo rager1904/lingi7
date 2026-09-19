@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Lingi7 — Oracle Cloud override for docker-compose.yml
+#
+# Hardens the public-facing Django deployment:
+#   * settings module -> config.settings.oci (DEBUG off, CORS/CSRF locked,
+#     throttling active, password validators on, whitenoise static)
+#   * runserver -> gunicorn (production WSGI server)
+#   * Nginx serves /media/ from the shared media volume
+#
+# Usage on the CPU host (deploy-cpu.sh does this automatically):
+#   docker compose -f docker-compose.yml -f docker-compose.oci.yml up -d ...
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  lingi7-web:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.oci
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             exec gunicorn config.wsgi:application \
+               --bind 0.0.0.0:8000 \
+               --workers 3 \
+               --timeout 120 \
+               --log-level info"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  lingi7-celery:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.oci
+
+  lingi7-beat:
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.oci
+
+  nginx:
+    volumes:
+      - media_files:/srv/media:ro

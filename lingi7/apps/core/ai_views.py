@@ -10,6 +10,7 @@ restart.
 from __future__ import annotations
 
 import logging
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -28,6 +29,56 @@ from apps.products.models import Category, Product, Store
 from apps.products.serializers import PublicProductListSerializer
 
 logger = logging.getLogger(__name__)
+
+_NUMBER = r"[0-9][0-9,]*\.?[0-9]*"
+_USD_PREFIX_RE = re.compile(r"(?i)(?<!\w)(US\$|USD|\$)\s*(" + _NUMBER + r")(?![\w$])")
+_USD_SUFFIX_RE = re.compile(r"(?i)(?<![\w$])(" + _NUMBER + r")\s*(USD|US\$)(?!\w)")
+
+
+def _zmw_rate() -> float:
+    return float(getattr(settings, "USD_TO_ZMW_RATE", 27.0))
+
+
+def _usd_to_zmw(text: str) -> str:
+    """Convert any US-dollar price expressions in text to Zambian Kwacha.
+
+    Deterministic safety net for the LLM: rewrites "$799", "US$799" or
+    "USD 799" (and the same with trailing "USD") to "K 21,573.00" using the
+    configured rate. Left untouched when no dollar amount is present.
+    """
+
+    def rep_prefix(match: re.Match) -> str:
+        try:
+            amount = float(match.group(2).replace(",", ""))
+        except (TypeError, ValueError):
+            return match.group(0)
+        return f"K {amount * _zmw_rate():,.2f}"
+
+    def rep_suffix(match: re.Match) -> str:
+        try:
+            amount = float(match.group(1).replace(",", ""))
+        except (TypeError, ValueError):
+            return match.group(0)
+        return f"K {amount * _zmw_rate():,.2f}"
+
+    return _USD_SUFFIX_RE.sub(rep_suffix, _USD_PREFIX_RE.sub(rep_prefix, text))
+
+
+def _normalize_price(value: Any) -> str:
+    """Convert a raw product price string (possibly USD) to a numeric ZMW string.
+
+    Product-card prices rendered by the assistant may arrive as "$799",
+    "USD 799" or plain ZMW numbers. Returned as a plain decimal, e.g. "21573.00",
+    so the frontend renders it with the Kwacha symbol.
+    """
+    if value is None:
+        return "0.00"
+    cleaned = re.sub(r"(?i)[$\s,]|US\$|USD", "", str(value))
+    try:
+        amount = float(cleaned)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{amount * _zmw_rate():.2f}"
 
 
 def _visible_products():
@@ -266,7 +317,16 @@ class AssistantQueryView(APIView):
                 timeout=settings.ASSISTANT_CHAIN_TIMEOUT,
             )
             response.raise_for_status()
-            return Response(_response(response.json(), source="shopping-assistant"))
+            payload = response.json()
+            if isinstance(payload, dict):
+                if isinstance(payload.get("response"), str):
+                    payload["response"] = _usd_to_zmw(payload["response"])
+                products = payload.get("products")
+                if isinstance(products, list):
+                    for item in products:
+                        if isinstance(item, dict) and "price" in item:
+                            item["price"] = _normalize_price(item.get("price"))
+            return Response(_response(payload, source="shopping-assistant"))
         except Exception as exc:
             logger.warning("Shopping assistant service failed; using fallback response: %s", exc)
             try:

@@ -139,8 +139,8 @@ Console → **Compute → Instances → Create instance**:
 > block volume. This single instance uses exactly that.
 
 Once running, note its **public IP** (instance details → Primary VNIC).
+---
 
-##
 ## 5. Create the GPU instance (credit-billed)
 
 Console → **Compute → Instances → Create instance**:

@@ -34,3 +34,4 @@ services:
   nginx:
     volumes:
       - media_files:/srv/media:ro
+      - ./lingi7/frontend/dist:/usr/share/nginx/html:ro

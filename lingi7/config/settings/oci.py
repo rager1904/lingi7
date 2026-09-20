@@ -86,6 +86,7 @@ if SENTRY_DSN.startswith(("http://", "https://")):
 REST_FRAMEWORK = {  # noqa: F405
     **REST_FRAMEWORK,  # noqa: F405
     "DEFAULT_THROTTLE_RATES": {
+        **REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {}),  # keep registration/ai/assistant
         "anon": "30/hour",
         "user": "200/hour",
         "auth": "5/minute",         # login attempts

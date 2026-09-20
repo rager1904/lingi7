@@ -81,6 +81,7 @@ MIDDLEWARE = ["whitenoise.middleware.WhiteNoiseMiddleware"] + MIDDLEWARE  # noqa
 REST_FRAMEWORK = {  # noqa: F405
     **REST_FRAMEWORK,  # noqa: F405
     "DEFAULT_THROTTLE_RATES": {
+        **REST_FRAMEWORK.get("DEFAULT_THROTTLE_RATES", {}),  # keep registration/ai/assistant
         "anon": "30/hour",
         "user": "500/hour",
         "auth": "5/minute",         # Login attempts — matches our WAF rule

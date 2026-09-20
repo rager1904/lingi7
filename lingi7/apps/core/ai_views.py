@@ -241,7 +241,7 @@ class SimilarProductView(APIView):
 
 
 class AssistantQueryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "assistant"
 
@@ -250,7 +250,9 @@ class AssistantQueryView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         payload = {
-            "user_id": str(request.user.pk),
+            "user_id": (
+                str(request.user.pk) if request.user.is_authenticated else "anonymous"
+            ),
             "query": data["query"],
             "context": data.get("context", ""),
             "image": data.get("image", ""),

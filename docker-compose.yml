@@ -188,7 +188,7 @@ services:
     container_name: lingi7-llm
     environment:
       - OLLAMA_HOST=0.0.0.0:8000
-      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_MODELS=/root/.ollama/models
       - OLLAMA_KEEP_ALIVE=30m
     volumes:
       - ollama_llm:/root/.ollama
@@ -208,7 +208,7 @@ services:
     container_name: lingi7-llm-small
     environment:
       - OLLAMA_HOST=0.0.0.0:8000
-      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_MODELS=/root/.ollama/models
       - OLLAMA_KEEP_ALIVE=30m
     volumes:
       - ollama_llm_small:/root/.ollama
@@ -228,7 +228,7 @@ services:
     container_name: lingi7-vlm
     environment:
       - OLLAMA_HOST=0.0.0.0:8000
-      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_MODELS=/root/.ollama/models
       - OLLAMA_KEEP_ALIVE=30m
     volumes:
       - ollama_vlm:/root/.ollama
@@ -248,7 +248,7 @@ services:
     container_name: lingi7-llama-guard
     environment:
       - OLLAMA_HOST=0.0.0.0:8000
-      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_MODELS=/root/.ollama/models
       - OLLAMA_KEEP_ALIVE=30m
     volumes:
       - ollama_guard:/root/.ollama

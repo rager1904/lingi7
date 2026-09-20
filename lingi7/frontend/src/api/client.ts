@@ -16,7 +16,7 @@ import axios, {
 } from "axios";
 import type { APIError, AuthTokens } from "../types";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 // Token storage helpers — sessionStorage for access, localStorage for refresh
 const TokenStorage = {

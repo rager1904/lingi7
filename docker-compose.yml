@@ -134,18 +134,46 @@ services:
   # MODEL SERVING (OPEN SOURCE)
   # ═══════════════════════════════════════════════════════════════════
 
-  # ── Model puller (runs once, then exits) ───────────────────────
-  ollama-init:
+  # ── Model pullers (run once each, then exit) ─────────────────────
+  # Each Ollama service reads its own named volume. The pullers must be
+  # separate containers: Docker mounts only ONE volume per path, so a single
+  # multi-volume init would silently put every model into the last volume.
+  ollama-init-llm:
     image: ollama/ollama:latest
-    container_name: lingi7-ollama-init
-    command: >
-      sh -c "ollama pull llama3.2:3b &&
-             ollama pull qwen2.5:3b &&
-             ollama pull llava:7b"
+    container_name: lingi7-ollama-init-llm
+    command: sh -c "ollama pull llama3.2:3b"
     volumes:
       - ollama_llm:/root/.ollama
+    networks:
+      - lingi7-platform-net
+    restart: "no"
+
+  ollama-init-small:
+    image: ollama/ollama:latest
+    container_name: lingi7-ollama-init-small
+    command: sh -c "ollama pull qwen2.5:3b"
+    volumes:
       - ollama_llm_small:/root/.ollama
+    networks:
+      - lingi7-platform-net
+    restart: "no"
+
+  ollama-init-vlm:
+    image: ollama/ollama:latest
+    container_name: lingi7-ollama-init-vlm
+    command: sh -c "ollama pull llava:7b"
+    volumes:
       - ollama_vlm:/root/.ollama
+    networks:
+      - lingi7-platform-net
+    restart: "no"
+
+  ollama-init-guard:
+    image: ollama/ollama:latest
+    container_name: lingi7-ollama-init-guard
+    command: sh -c "ollama pull llama3.2:3b"
+    volumes:
+      - ollama_guard:/root/.ollama
     networks:
       - lingi7-platform-net
     restart: "no"

@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.core.currency import get_usd_to_zmw_rate
 from apps.orders.models import OrderLine
 from apps.products.models import Category, Product, Store
 from apps.products.serializers import PublicProductListSerializer
@@ -36,7 +37,7 @@ _USD_SUFFIX_RE = re.compile(r"(?i)(?<![\w$])(" + _NUMBER + r")\s*(USD|US\$)(?!\w
 
 
 def _zmw_rate() -> float:
-    return float(getattr(settings, "USD_TO_ZMW_RATE", 27.0))
+    return get_usd_to_zmw_rate()
 
 
 def _usd_to_zmw(text: str) -> str:

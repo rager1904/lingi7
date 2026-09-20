@@ -430,3 +430,5 @@ CATALOG_RETRIEVER_TIMEOUT = config("CATALOG_RETRIEVER_TIMEOUT", default=20, cast
 ASSISTANT_CHAIN_URL = config("ASSISTANT_CHAIN_URL", default="http://chain-server:8009")
 ASSISTANT_CHAIN_TIMEOUT = config("ASSISTANT_CHAIN_TIMEOUT", default=180, cast=int)
 USD_TO_ZMW_RATE = config("USD_TO_ZMW_RATE", default=27, cast=float)
+USD_TO_ZMW_RATE_API = config("USD_TO_ZMW_RATE_API", default="https://open.er-api.com/v6/latest/USD")
+USD_TO_ZMW_RATE_TTL_SECONDS = config("USD_TO_ZMW_RATE_TTL_SECONDS", default=12 * 3600, cast=int)

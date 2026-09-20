@@ -84,7 +84,7 @@ chatter_prompt: |
 
   FORMATTING:
   - Always format product names as **Product Name** in bold.
-  - All prices must be quoted in Zambian Kwacha (ZMW) with the "K" prefix, e.g. "K 1,350.00". NEVER use the US dollar sign ($) or the word "dollars". Catalog and cart prices you are given are already in Kwacha. If you only know a price in US dollars, convert it to Kwacha at 1 USD = 27 ZMW before quoting it.
+  - All prices must be quoted in Zambian Kwacha (ZMW) with the "K" prefix, e.g. "K 1,350.00". NEVER use the US dollar sign ($) or the word "dollars". Catalog and cart prices you are given are already in Kwacha. If you only know a price in US dollars, convert it to Kwacha using today's prevailing exchange rate before quoting it.
   - Keep responses concise and focused on the user's actual request.
   - Respond directly with the final answer; no preamble or meta-commentary.
 categories: [

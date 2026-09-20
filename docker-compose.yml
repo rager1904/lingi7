@@ -142,7 +142,7 @@ services:
     image: ollama/ollama:latest
     container_name: lingi7-ollama-init-llm
     entrypoint: ["sh", "-c"]
-    command: "ollama pull llama3.2:3b"
+    command: "ollama serve & sleep 5; ollama pull llama3.2:3b"
     volumes:
       - ollama_llm:/root/.ollama
     networks:
@@ -153,7 +153,7 @@ services:
     image: ollama/ollama:latest
     container_name: lingi7-ollama-init-small
     entrypoint: ["sh", "-c"]
-    command: "ollama pull qwen2.5:3b"
+    command: "ollama serve & sleep 5; ollama pull qwen2.5:3b"
     volumes:
       - ollama_llm_small:/root/.ollama
     networks:
@@ -164,7 +164,7 @@ services:
     image: ollama/ollama:latest
     container_name: lingi7-ollama-init-vlm
     entrypoint: ["sh", "-c"]
-    command: "ollama pull llava:7b"
+    command: "ollama serve & sleep 5; ollama pull llava:7b"
     volumes:
       - ollama_vlm:/root/.ollama
     networks:
@@ -175,7 +175,7 @@ services:
     image: ollama/ollama:latest
     container_name: lingi7-ollama-init-guard
     entrypoint: ["sh", "-c"]
-    command: "ollama pull llama3.2:3b"
+    command: "ollama serve & sleep 5; ollama pull llama3.2:3b"
     volumes:
       - ollama_guard:/root/.ollama
     networks:

@@ -242,7 +242,7 @@ services:
       - BGE_MODEL_ID=${BGE_MODEL_ID:-BAAI/bge-small-en-v1.5}
       - HF_TOKEN=${HF_TOKEN:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -262,7 +262,7 @@ services:
       - CLIP_MODEL_ID=${CLIP_MODEL_ID:-openai/clip-vit-base-patch32}
       - HF_TOKEN=${HF_TOKEN:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3

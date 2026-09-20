@@ -15,13 +15,7 @@ services:
   lingi7-web:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.oci
-    command: >
-      sh -c "python manage.py collectstatic --noinput &&
-             exec gunicorn config.wsgi:application \
-               --bind 0.0.0.0:8000 \
-               --workers 3 \
-               --timeout 120 \
-               --log-level info"
+    command: sh -c "python manage.py collectstatic --noinput && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --log-level info"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
       interval: 15s

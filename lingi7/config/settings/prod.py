@@ -56,20 +56,23 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
 EMAIL_USE_TLS = env("EMAIL_USE_TLS", default=True, cast=bool)
 
-# ── Sentry ─────────────────────────────────────────────────────────────────────
+# ── Sentry (optional — leave SENTRY_DSN empty/invalid to disable) ────────────
 SENTRY_DSN = env("SENTRY_DSN", default="")
-if SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[
-            DjangoIntegration(transaction_style="url"),
-            CeleryIntegration(),
-            RedisIntegration(),
-        ],
-        traces_sample_rate=0.1,      # 10% of requests traced — adjust per volume
-        send_default_pii=False,      # Never send PII to Sentry
-        environment="production",
-    )
+if SENTRY_DSN.startswith(("http://", "https://")):
+    try:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[
+                DjangoIntegration(transaction_style="url"),
+                CeleryIntegration(),
+                RedisIntegration(),
+            ],
+            traces_sample_rate=0.1,      # 10% of requests traced — adjust per volume
+            send_default_pii=False,      # Never send PII to Sentry
+            environment="production",
+        )
+    except Exception:
+        pass
 
 # ── Whitenoise (static files) ─────────────────────────────────────────────────
 MIDDLEWARE = ["whitenoise.middleware.WhiteNoiseMiddleware"] + MIDDLEWARE  # noqa: F405

@@ -61,23 +61,26 @@ EMAIL_USE_TLS = env("EMAIL_USE_TLS", default=True, cast=bool)
 
 # ── Sentry (optional — leave SENTRY_DSN empty to disable) ────────────────────
 SENTRY_DSN = env("SENTRY_DSN", default="")
-if SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.celery import CeleryIntegration
-    from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.redis import RedisIntegration
+if SENTRY_DSN.startswith(("http://", "https://")):
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.django import DjangoIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
 
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[
-            DjangoIntegration(transaction_style="url"),
-            CeleryIntegration(),
-            RedisIntegration(),
-        ],
-        traces_sample_rate=0.1,
-        send_default_pii=False,
-        environment="oci",
-    )
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[
+                DjangoIntegration(transaction_style="url"),
+                CeleryIntegration(),
+                RedisIntegration(),
+            ],
+            traces_sample_rate=0.1,
+            send_default_pii=False,
+            environment="oci",
+        )
+    except Exception:
+        pass
 
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
 REST_FRAMEWORK = {  # noqa: F405

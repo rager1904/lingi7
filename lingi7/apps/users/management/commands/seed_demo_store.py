@@ -21,14 +21,19 @@ Usage:
 
 from __future__ import annotations
 
+import io
 import logging
+import random
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.text import slugify
+from PIL import Image, ImageDraw
 
+from apps.products.assistant_index import AssistantCatalogIndexer
 from apps.products.models import Category, InventoryRecord, Product, Store
 from apps.products.services import ProductService, StoreService
 from apps.users.models import KYCStatus, UserRole
@@ -724,6 +729,20 @@ DEMO_PRODUCTS = [
 ]
 
 
+def _make_placeholder_image(name: str) -> ContentFile:
+    """Generate a 600x600 placeholder JPEG showing the product name."""
+    img = Image.new(
+        "RGB",
+        (600, 600),
+        color=(random.randint(40, 210), random.randint(40, 210), random.randint(40, 210)),
+    )
+    draw = ImageDraw.Draw(img)
+    draw.text((24, 285), name[:38], fill=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=75)
+    return ContentFile(buf.getvalue(), name="placeholder.jpg")
+
+
 class Command(BaseCommand):
     help = (
         "Create the fully-approved demo LINGI vendor store (Ringson Banda, "
@@ -987,9 +1006,28 @@ class Command(BaseCommand):
             elif product.status == Product.Status.APPROVED:
                 self.stdout.write(f"  Already APPROVED: {name}")
 
+            new_image = self._ensure_product_image(product)
+            if new_image and product.status == Product.Status.APPROVED:
+                try:
+                    AssistantCatalogIndexer.index_product(product)
+                    self.stdout.write(f"  Indexed product image: {name}")
+                except Exception as exc:
+                    self.stdout.write(self.style.WARNING(
+                        f"  Could not re-index '{name}' with image "
+                        f"({type(exc).__name__}: {exc})"
+                    ))
+
             self._ensure_inventory(product, quantity=25)
             results.append(product)
         return results
+
+    @staticmethod
+    def _ensure_product_image(product: Product) -> bool:
+        if product.images.exists():
+            return False
+        img = _make_placeholder_image(product.name)
+        ProductService.add_image(product, img, alt_text=product.name)
+        return True
 
     @staticmethod
     def _ensure_inventory(product: Product, quantity: int) -> None:

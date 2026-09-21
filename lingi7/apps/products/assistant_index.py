@@ -29,6 +29,12 @@ ASSISTANT_CATALOG_COLUMNS = [
     "url",
     "price",
     "image",
+    # Enrichment fields folded into the retriever's embedded text so
+    # natural-language queries match on real product attributes.
+    "tags",
+    "keywords",
+    "features",
+    "condition",
 ]
 
 
@@ -82,6 +88,10 @@ class AssistantCatalogIndexer:
             "url": f"/products/{product.slug}",
             "price": str(product.price),
             "image": image,
+            "tags": ", ".join(str(t) for t in (product.suggested_tags or [])[:12]),
+            "keywords": ", ".join(str(k) for k in (product.search_keywords or [])[:12]),
+            "features": ", ".join(str(f) for f in (product.ai_features or [])[:12]),
+            "condition": product.condition or "",
         }
 
     @classmethod

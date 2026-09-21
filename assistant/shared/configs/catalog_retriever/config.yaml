@@ -5,6 +5,10 @@ image_model_name: "openai/clip-vit-base-patch32"
 db_port: "http://milvus:19530"
 db_name: "shopping_advisor_db"
 sim_threshold: 0.5
+# Pull ``k * candidate_multiplier`` similarity candidates before applying the
+# similarity threshold and price filters, so budget-constrained queries do not
+# get zeroed out by a too-narrow top-k window.
+candidate_multiplier: 4
 text_collection: "shopping_advisor_text_db"
 image_collection: "shopping_advisor_image_db"
 data_source: "/app/shared/data/products_extended.csv"

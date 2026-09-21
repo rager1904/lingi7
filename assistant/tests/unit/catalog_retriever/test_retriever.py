@@ -85,6 +85,7 @@ def _doc(
     return SimpleNamespace(
         page_content=page_content,
         metadata={
+            "product_id": str(id(name)),
             "pk": id(name),
             "name": name,
             "price": price,
@@ -623,7 +624,7 @@ class TestRetrieve:
         assert len(ids) == 1
         assert images == ["silk_dress.jpg"]
 
-    async def test_text_only_no_categories_returns_empty(
+    async def test_text_only_no_categories_returns_similarity_ranked(
         self, retriever: Retriever
     ) -> None:
         retriever.text_db.similarity_search_with_relevance_scores = MagicMock(
@@ -638,7 +639,12 @@ class TestRetrieve:
             verbose=False,
         )
 
-        assert (texts, ids, sims, names, images) == ([], [], [], [], [])
+        # Browse queries carry no category gate; the similarity-ranked window
+        # is returned so the assistant always has something to ground on.
+        assert names == ["Silk Dress"]
+        assert sims == [0.9]
+        assert len(ids) == 1
+        assert texts[0].startswith("Silk Dress | desc")
 
     async def test_similarity_threshold_drops_low_scores(
         self, retriever: Retriever

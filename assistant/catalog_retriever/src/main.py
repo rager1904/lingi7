@@ -110,6 +110,12 @@ class ProductIndexRecord(BaseModel):
     url: str = ""
     price: str = "0"
     image: str = ""
+    # Enrichment fields feed the embedded text only (folded into page content,
+    # never added to the Milvus schema).
+    tags: str = ""
+    keywords: str = ""
+    features: str = ""
+    condition: str = ""
 
 class ProductIndexRequest(BaseModel):
     products: List[ProductIndexRecord]

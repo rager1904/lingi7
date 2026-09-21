@@ -39,6 +39,11 @@ class RetrieverConfig(BaseModel):
     sim_threshold: float
     text_collection: str
     image_collection: str
+    # How many similarity candidates to pull before applying threshold and
+    # structured filters. A budget query ("under K200") whose best matches sit
+    # just outside the top-k cutoff needs a wider net so it is not returned as
+    # an empty result. Final output is still truncated to ``k``.
+    candidate_multiplier: int = 4
 
 # Defines a type for storing and embedding text.
 class TextEmbeddings(Embeddings):
@@ -97,6 +102,9 @@ class Retriever:
         self.sim_threshold = config.sim_threshold
         self.text_collection = config.text_collection
         self.image_collection = config.image_collection
+        self.candidate_multiplier = max(
+            1, getattr(config, "candidate_multiplier", 4)
+        )
 
         # Keys.
         embed_key = os.environ.get("API_KEY", os.environ.get("EMBED_API_KEY", ""))
@@ -134,6 +142,93 @@ class Retriever:
         )
 
         logging.info(f"CATALOG RETRIEVER | Retriever.__init__() | Milvus collections initialized.")
+
+    # Metadata columns that the Milvus schema holds. Enrichment fields (tags,
+    # keywords, features, condition) are folded into the embedded text instead
+    # of the schema, so existing collections never need to be re-created.
+    _METADATA_COLUMNS = (
+        "product_id",
+        "category",
+        "subcategory",
+        "name",
+        "description",
+        "url",
+        "price",
+        "image",
+    )
+
+    @classmethod
+    def _build_page_content(cls, record: Dict[str, Any]) -> str:
+        """Build the embedded text for a product record.
+
+        Semantic search should index every searchable field the marketplace
+        holds (tags, keywords, curated AI features, condition) — not just
+        name + description — so natural-language queries match on real product
+        attributes instead of amplifying a generic name. The
+        ``category,subcategory`` pair is deliberately kept LAST: ``retrieve()``
+        parses it from the trailing segment after the final ``|``.
+        """
+        name = str(record.get("name") or "").strip()
+        description = str(record.get("description") or "").strip()
+        category = str(record.get("category") or "marketplace").strip()
+        subcategory = str(record.get("subcategory") or category).strip()
+
+        enrich_parts: List[str] = []
+        for key in ("tags", "keywords", "features"):
+            value = record.get(key)
+            if not value:
+                continue
+            if isinstance(value, (list, tuple)):
+                parts = ", ".join(str(item) for item in value if str(item).strip())
+            else:
+                parts = str(value).strip()
+            if parts:
+                enrich_parts.append(parts)
+
+        condition = str(record.get("condition") or "").strip()
+        if condition and condition.lower() != "new":
+            enrich_parts.append(f"condition: {condition}")
+
+        base = f"{name} | {description} | {category},{subcategory}"
+        if enrich_parts:
+            return f"{name} | {description} | {' | '.join(enrich_parts)} | {category},{subcategory}"
+        return base
+
+    def _delete_product_records(self, product_ids: List[str]) -> None:
+        """Remove stale vectors for ``product_ids`` before re-insertion.
+
+        Indexing must not be append-only: a price or description update in the
+        Django catalog has to replace the old vector, otherwise retrieval
+        serves outdated facts (stale prices/availability) that the assistant
+        would hallucinate from. Deletes are best-effort — if the collection is
+        unavailable we log and continue with append, which still converges on
+        the next full CSV reindex.
+        """
+        ids = [pid for pid in product_ids if pid and str(pid).strip()]
+        if not ids:
+            return
+        quoted = '", "'.join(str(pid).replace('"', '\\"') for pid in ids)
+        expr = f'product_id in ["{quoted}"]'
+        for index_name, db in (("text", self.text_db), ("image", self.image_db)):
+            try:
+                collection = getattr(db, "col", None)
+                if collection is None:
+                    continue
+                collection.delete(expr)
+                collection.flush()
+                logging.info(
+                    "CATALOG RETRIEVER | _delete_product_records() | "
+                    "removed stale %s vectors for %d product(s)",
+                    index_name,
+                    len(ids),
+                )
+            except Exception as exc:
+                logging.warning(
+                    "CATALOG RETRIEVER | _delete_product_records() | "
+                    "%s delete failed (%s); appending fresh vectors anyway",
+                    index_name,
+                    exc,
+                )
 
     def embeddings_exist(self) -> bool:
         """
@@ -412,17 +507,21 @@ class Retriever:
         # all-varchar Milvus schema and the embedded text. Normalise every
         # metadata value to a string so the CSV seed and the live
         # /index/products upsert share an identical schema.
-        metadatas = [
+        raw_rows = [
             {
                 key: "" if pd.isna(value) else str(value)
                 for key, value in record.items()
             }
             for record in df.to_dict(orient="records")
         ]
-        combined_texts = [
-            f"{meta['name']} | {meta['description']} | {meta['category']},{meta['subcategory']}"
-            for meta in metadatas
+        # Only the schema columns are stored as metadata; any enrichment
+        # columns present in the CSV (tags, keywords, features, condition)
+        # are consumed by the embedded text instead.
+        metadatas = [
+            {col: row.get(col, "") for col in self._METADATA_COLUMNS}
+            for row in raw_rows
         ]
+        combined_texts = [self._build_page_content(row) for row in raw_rows]
         image_refs = [meta["image"] for meta in metadatas]
 
         # Embed the combined name and description fields
@@ -470,11 +569,14 @@ class Retriever:
         verbose: bool = False,
     ) -> Dict[str, int]:
         """
-        Append product records directly to Milvus.
+        Upsert product records into Milvus.
 
         Records must include the same metadata columns used by the startup CSV:
         product_id, category, subcategory, name, description, url, price, image.
-        Re-indexing is append-only; retrieval deduplicates by product_id at query time.
+        Optional enrichment fields (tags, keywords, features, condition) are
+        folded into the embedded text. Any pre-existing vectors for the same
+        product_id are deleted first so an updated price or description never
+        leaves a stale vector behind.
         """
         normalised: List[Dict[str, Any]] = []
         for record in records:
@@ -495,16 +597,22 @@ class Retriever:
                     "url": str(record.get("url") or ""),
                     "price": str(record.get("price") or "0"),
                     "image": str(record.get("image") or ""),
+                    "tags": record.get("tags") or "",
+                    "keywords": record.get("keywords") or "",
+                    "features": record.get("features") or "",
+                    "condition": record.get("condition") or "",
                 }
             )
 
         if not normalised:
             return {"received": len(records), "indexed_text": 0, "indexed_images": 0}
 
-        combined_texts = [
-            f"{item['name']} | {item['description']} | {item['category']},{item['subcategory']}"
-            for item in normalised
-        ]
+        # Replace stale vectors before appending fresh ones.
+        self._delete_product_records(
+            [item["product_id"] for item in normalised]
+        )
+
+        combined_texts = [self._build_page_content(item) for item in normalised]
         text_embs = self.text_embeddings(combined_texts, query_type="passage", verbose=verbose)
         successful_texts_data = [
             (text, emb, meta)
@@ -513,10 +621,14 @@ class Retriever:
         ]
         if successful_texts_data:
             successful_texts, successful_text_embs, successful_text_metadatas = zip(*successful_texts_data)
+            text_metadatas = [
+                {col: meta.get(col, "") for col in self._METADATA_COLUMNS}
+                for meta in successful_text_metadatas
+            ]
             self.text_db.add_embeddings(
                 texts=list(successful_texts),
                 embeddings=list(successful_text_embs),
-                metadatas=list(successful_text_metadatas),
+                metadatas=list(text_metadatas),
             )
 
         image_refs = [item["image"] for item in normalised]
@@ -528,10 +640,14 @@ class Retriever:
         ]
         if successful_images_data:
             successful_images, successful_image_embs, successful_image_metadatas = zip(*successful_images_data)
+            image_metadatas = [
+                {col: meta.get(col, "") for col in self._METADATA_COLUMNS}
+                for meta in successful_image_metadatas
+            ]
             self.image_db.add_embeddings(
                 texts=list(successful_images),
                 embeddings=list(successful_image_embs),
-                metadatas=list(successful_image_metadatas),
+                metadatas=list(image_metadatas),
             )
 
         return {
@@ -623,25 +739,34 @@ class Retriever:
                 except StopIteration:
                     pass
                 
-        # Deduplicate.
-        seen_ids = set()
-        final_results = [] 
+        # Deduplicate by product_id, keeping the HIGHEST-similarity instance.
+        # Milvus holds one vector per product_id after the upsert indexer, but
+        # rows seeded before that change (or duplicates from failed deletes)
+        # may still repeat across the query set; a stale duplicate must never
+        # displace a fresher, better-scoring match.
+        best_by_id: Dict[str, Tuple[Any, float]] = {}
         for res in interleaved_results:
-            pk_value = res[0].metadata.get("product_id") 
-            id_ = str(pk_value) if pk_value is not None else None 
-            if id_ is not None and id_ not in seen_ids:
-                seen_ids.add(id_)
-                final_results.append(res)
-        
-        all_results = final_results
+            pk_value = res[0].metadata.get("product_id")
+            id_ = str(pk_value) if pk_value is not None else None
+            if id_ is None:
+                continue
+            current = best_by_id.get(id_)
+            if current is None or res[1] > current[1]:
+                best_by_id[id_] = res
+        all_results = list(best_by_id.values())
 
         if verbose:
             logging.info(f"""CATALOG RETRIEVER | retrieve() | All retrieved results length. {len(all_results)}
                             \n\t| Similarities: {[res[1] for res in all_results]}
                             \n\t| Names: {[res[0].metadata['name'] for res in all_results]}""")
 
-        # Keep the highest-ranked top-k first, then apply explicit filters to that window.
-        ranked_results = all_results[:k]
+        # Pull a wider candidate window than the final ``k`` before applying the
+        # similarity threshold and explicit filters. Retrieving only the top-k
+        # and then filtering that tiny window silently zeroes out budget-range
+        # queries ("under K200") whose best matches sit just outside the cutoff,
+        # making the assistant claim nothing exists when the catalog has plenty.
+        candidate_window = max(k * self.candidate_multiplier, k)
+        ranked_results = all_results[:candidate_window]
         ranked_results = [res for res in ranked_results if res[1] > self.sim_threshold]
         ranked_results = sorted(ranked_results, key=lambda item: item[1], reverse=True)
         ranked_results = self._apply_structured_filters(

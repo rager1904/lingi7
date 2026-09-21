@@ -65,6 +65,15 @@ _CART_MARKERS = (
     "cart", "add ", "remove", "delete", "checkout", "subtotal", "my total", "buy ",
 )
 
+# Stopwords stripped before tokenizing a grounding query. Kept in sync with the
+# assistant chain's own grounding prompts so all DB fallbacks behave alike.
+_GROUNDING_STOP = {
+    "the", "and", "for", "you", "your", "show", "have", "what", "whats",
+    "with", "want", "need", "me", "my", "any", "some", "available", "is",
+    "are", "of", "to", "in", "on", "do", "does", "looking", "find", "get",
+    "please", "can", "could", "would", "there", "this", "that",
+}
+
 
 def _zmw_rate() -> float:
     return get_usd_to_zmw_rate()
@@ -113,6 +122,28 @@ def _visible_products():
         .select_related("store", "category")
         .prefetch_related("images", "inventory")
     )
+
+
+def _available_products():
+    """Products that can actually be bought right now.
+
+    Approved and live, and not explicitly out-of-stock (tracked inventory with
+    zero available units and backorders disabled). Products with no inventory
+    record at all are treated as available so legacy rows keep working. Grounding
+    the assistant on buyable rows prevents "available" claims about empty stock.
+    """
+    return _visible_products().exclude(
+        Q(inventory__isnull=False)
+        & Q(inventory__track_inventory=True)
+        & Q(inventory__quantity_available=0)
+        & Q(inventory__allow_backorder=False)
+    )
+
+
+def _search_terms(query: str) -> list[str]:
+    """Meaningful terms from a grounding query (stopwords and 1-2 char tokens removed)."""
+    tokens = re.findall(r"[A-Za-z0-9']+", query or "")
+    return [t for t in tokens if len(t) > 2 and t.lower() not in _GROUNDING_STOP][:8]
 
 
 def _response(data: Any, *, source: str = "database", meta: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -231,15 +262,25 @@ class SemanticProductSearchView(APIView):
         condition: str,
         limit: int,
     ):
-        text_q = (
-            Q(name__icontains=query)
-            | Q(description__icontains=query)
-            | Q(meta_title__icontains=query)
-            | Q(meta_description__icontains=query)
-        )
-        if connection.vendor != "sqlite":
-            text_q |= Q(search_keywords__icontains=query) | Q(suggested_tags__icontains=query)
-        qs = _visible_products().filter(text_q)
+        terms = _search_terms(query)
+        qs = _available_products()
+        if terms:
+            text_q = Q()
+            for term in terms:
+                text_q |= (
+                    Q(name__icontains=term)
+                    | Q(description__icontains=term)
+                    | Q(meta_title__icontains=term)
+                    | Q(meta_description__icontains=term)
+                )
+            if connection.vendor != "sqlite":
+                for term in terms:
+                    text_q |= (
+                        Q(search_keywords__icontains=term)
+                        | Q(suggested_tags__icontains=term)
+                        | Q(ai_features__icontains=term)
+                    )
+            qs = qs.filter(text_q)
         if category:
             qs = qs.filter(Q(category__slug=category) | Q(category__name__iexact=category))
         if min_price is not None:
@@ -433,31 +474,34 @@ class AssistantQueryView(APIView):
         return hydrated
 
     def _database_ground(self, query: str, request, limit: int = 5) -> list[dict[str, Any]]:
-        """Ground an assistant reply in real, visible Django products.
+        """Ground an assistant reply in real, buyable Django products.
 
         Used when the semantic retriever returns nothing so the reply can never
         invent inventory. Token-based so multi-word queries ("girls button up
-        cardigan") still match, and falls back to the newest live products for
-        pure browse requests ("what do you have").
+        cardigan") still match across the same fields the semantic index embeds,
+        and falls back to the newest buyable products for pure browse requests
+        ("what do you have").
         """
-        stop = {
-            "the", "and", "for", "you", "your", "show", "have", "what", "whats",
-            "with", "want", "need", "me", "my", "any", "some", "available", "is",
-            "are", "of", "to", "in", "on", "do", "does", "looking", "find", "get",
-            "please", "can", "could", "would", "there", "this", "that",
-        }
-        tokens = re.findall(r"[A-Za-z0-9']+", query or "")
-        terms = [t for t in tokens if len(t) > 2 and t.lower() not in stop][:6]
+        terms = _search_terms(query)[:6]
 
-        qs = _visible_products()
+        qs = _available_products()
         matches: list[Product] = []
         if terms:
             text_q = Q()
             for term in terms:
-                text_q |= Q(name__icontains=term) | Q(description__icontains=term)
+                text_q |= (
+                    Q(name__icontains=term)
+                    | Q(description__icontains=term)
+                    | Q(meta_title__icontains=term)
+                    | Q(meta_description__icontains=term)
+                )
             if connection.vendor != "sqlite":
                 for term in terms:
-                    text_q |= Q(search_keywords__icontains=term)
+                    text_q |= (
+                        Q(search_keywords__icontains=term)
+                        | Q(suggested_tags__icontains=term)
+                        | Q(ai_features__icontains=term)
+                    )
             matches = list(qs.filter(text_q).order_by("-created_at")[:limit])
         if not matches:
             matches = list(qs.order_by("-created_at")[:limit])

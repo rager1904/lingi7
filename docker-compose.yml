@@ -354,6 +354,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
       CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
+      MEMORY_RETRIEVER_URL: http://memory-retriever:8011
       ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     env_file:
@@ -389,6 +390,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
       CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
+      MEMORY_RETRIEVER_URL: http://memory-retriever:8011
       ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     env_file:
@@ -422,6 +424,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       CATALOG_ENRICHMENT_SERVICE_URL: http://enrichment-backend:8000
       CATALOG_RETRIEVER_URL: http://catalog-retriever:8010
+      MEMORY_RETRIEVER_URL: http://memory-retriever:8011
       ASSISTANT_CATALOG_CSV_PATH: /platform/assistant/shared/data/products_extended.csv
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
     env_file:

@@ -13,6 +13,47 @@ import type {
 } from "../types";
 import { normalizeZambianPhone } from "../utils";
 
+/** Downscale limit for uploaded identity photos. */
+const MAX_UPLOAD_DIMENSION = 1600;
+/** JPEG quality after compression. */
+const JPEG_QUALITY = 0.8;
+
+/**
+ * Compress an identity photo so KYC uploads are small enough to finish within
+ * the client timeout on slow mobile links. A phone camera image of several MB
+ * becomes ~100-300KB. Images already under 250KB (or non-images) pass through.
+ */
+async function compressImage(file: File): Promise<Blob> {
+  if (file.size <= 250 * 1024 || !file.type.startsWith("image/")) {
+    return file;
+  }
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(
+    1,
+    MAX_UPLOAD_DIMENSION / Math.max(bitmap.width, bitmap.height)
+  );
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    return file;
+  }
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) =>
+        blob ? resolve(blob) : reject(new Error("Image compression failed.")),
+      "image/jpeg",
+      JPEG_QUALITY
+    );
+  });
+}
+
 /** Map DRF profile / token payload into the frontend User shape. */
 export function mapProfileToUser(data: Record<string, unknown>): User {
   const firstName = (data.first_name as string) || "";
@@ -111,12 +152,29 @@ export const authApi = {
 
   /**
    * Submit KYC documents (NRC photo, selfie).
+   * Photos are compressed client-side and the call is given a long timeout so
+   * uploads survive slow mobile links.
    */
   submitKYC: async (formData: FormData): Promise<{ detail: string }> => {
-    // Let axios set multipart boundary automatically
+    const [front, back, selfie] = await Promise.all([
+      compressImage(formData.get("nrc_front") as File),
+      compressImage(formData.get("nrc_back") as File),
+      compressImage(formData.get("selfie") as File),
+    ]);
+
+    const payload = new FormData();
+    for (const key of ["nrc_number", "physical_address", "province"]) {
+      const value = formData.get(key);
+      if (value !== null) payload.append(key, String(value));
+    }
+    payload.append("nrc_front", front, "nrc_front.jpg");
+    payload.append("nrc_back", back, "nrc_back.jpg");
+    payload.append("selfie", selfie, "selfie.jpg");
+
     const { data } = await apiClient.post<{ detail: string }>(
       "/auth/kyc/upload/",
-      formData
+      payload,
+      { timeout: 120_000 }
     );
     return data;
   },

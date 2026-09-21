@@ -1,2 +1,0 @@
-import{a as r}from"./index-B8SyRiAV.js";const e=t=>{if(Array.isArray(t))return{count:t.length,next:null,previous:null,results:t};const s=t;return{count:s.count??0,next:s.next??null,previous:s.previous??null,results:s.results??[]}},o={list:async()=>e((await r.get("/products/stores/")).data),retrieve:async t=>(await r.get(`/products/stores/${t}/`)).data};export{o as s};
-//# sourceMappingURL=stores-kV6KryNa.js.map

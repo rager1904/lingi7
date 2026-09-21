@@ -9,7 +9,7 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authApi } from "../api/auth";
 import { useAuthStore } from "../store";
-import { extractMessage, isValidNrcNumber, ZAMBIA_PROVINCES } from "../utils";
+import { extractMessage, formatNrcMask, isValidNrcNumber, ZAMBIA_PROVINCES } from "../utils";
 
 type UploadStep = "intro" | "upload" | "submitting" | "success" | "error";
 
@@ -179,8 +179,10 @@ const KYCUploadPage: React.FC = () => {
           </label>
           <input
             value={nrcNumber}
-            onChange={(e) => setNrcNumber(e.target.value)}
+            onChange={(e) => setNrcNumber(formatNrcMask(e.target.value))}
             placeholder="123456/78/1"
+            inputMode="numeric"
+            autoComplete="off"
             className="input"
           />
           <p className="mt-1 text-xs text-gray-500">

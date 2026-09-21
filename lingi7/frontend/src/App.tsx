@@ -31,6 +31,9 @@ import ShoppingAssistant from "./components/assistant/ShoppingAssistant";
 
 // ─── Lazy pages ───────────────────────────────────────────────────────────────
 const HomePage           = lazy(() => import("./pages/HomePage"));
+const AboutPage          = lazy(() => import("./pages/AboutPage"));
+const PrivacyPage        = lazy(() => import("./pages/PrivacyPage"));
+const TermsPage          = lazy(() => import("./pages/TermsPage"));
 const ProductListingPage = lazy(() => import("./pages/ProductListingPage"));
 const ShopDirectoryPage  = lazy(() => import("./pages/ShopDirectoryPage"));
 const StorefrontPage     = lazy(() => import("./pages/StorefrontPage"));
@@ -176,8 +179,11 @@ const App: React.FC = () => (
         <Route path="/shops/:slug"      element={<StorefrontPage />} />
         <Route path="/cart"             element={<CartPage />} />
         <Route path="/wishlist"         element={<WishlistPage />} />
-        <Route path="/notifications"    element={<NotificationsPage />} />
+<Route path="/notifications"    element={<NotificationsPage />} />
         <Route path="/products/:slug"  element={<ProductDetailPage />} />
+        <Route path="/about"            element={<AboutPage />} />
+        <Route path="/privacy"          element={<PrivacyPage />} />
+        <Route path="/terms"            element={<TermsPage />} />
 
         {/* Protected */}
         <Route element={<RequireAuth />}>

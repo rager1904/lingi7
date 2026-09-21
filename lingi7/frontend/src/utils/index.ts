@@ -120,6 +120,18 @@ export function isValidNrcNumber(nrc: string): boolean {
   return /^\d{6}\/\d{2}\/[1-9]$/.test(nrc.trim());
 }
 
+/**
+ * Auto-format NRC input as the user types:
+ * inserts "/" after the 6th and 8th digits → 123456/78/1.
+ * Non-numeric characters are stripped; input is capped at 9 digits.
+ */
+export function formatNrcMask(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 9);
+  if (digits.length <= 6) return digits;
+  if (digits.length <= 8) return `${digits.slice(0, 6)}/${digits.slice(6)}`;
+  return `${digits.slice(0, 6)}/${digits.slice(6, 8)}/${digits.slice(8, 9)}`;
+}
+
 export const SHIPMENT_STATUS_LABEL: Record<ShipmentStatus, string> = {
   CREATED: "Shipment Created",
   DISPATCHED: "Dispatched",

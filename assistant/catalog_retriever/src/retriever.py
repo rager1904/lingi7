@@ -394,6 +394,8 @@ class Retriever:
             for entry in os.listdir("."):
                 dir_contents.append(entry)
             logging.info(f"CATALOG RETRIEVER | Retriever.milvus_from_csv() | Directory contents at failure: {dir_contents}")
+            logging.info("CATALOG RETRIEVER | Retriever.milvus_from_csv() | Skipping CSV seed; catalog will be populated by the live indexer.")
+            return
 
         # Create combined name and description strings
         if "pk" in df.columns and "product_id" not in df.columns:

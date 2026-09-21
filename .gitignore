@@ -17,3 +17,8 @@ staticfiles/
 media/
 tmp/
 
+# The assistant catalog CSV is rewritten at runtime by the Django indexer
+# (apps/products/assistant_index.py). Track the header-only template instead
+# so a live server's catalog export never blocks a git pull.
+assistant/shared/data/products_extended.csv
+

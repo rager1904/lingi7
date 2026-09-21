@@ -112,7 +112,12 @@ class PublicProductViewSet(viewsets.ReadOnlyModelViewSet):
 
         params = self.request.query_params
         if category := params.get("category"):
-            qs = qs.filter(category__slug=category)
+            # Public categories are browsable as a tree: the /categories/
+            # endpoint lists only roots while products are assigned to
+            # leaves, so a root filter must also match its descendants.
+            qs = qs.filter(
+                Q(category__slug=category) | Q(category__parent__slug=category)
+            )
         if min_price := params.get("min_price"):
             qs = qs.filter(price__gte=min_price)
         if max_price := params.get("max_price"):

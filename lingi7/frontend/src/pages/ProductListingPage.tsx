@@ -14,6 +14,9 @@ const ProductListingPage: React.FC = () => {
   const [sort, setSort] = useState("featured");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState(false);
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const deferredQuery = useDeferredValue(query);
@@ -22,8 +25,17 @@ const ProductListingPage: React.FC = () => {
   useEffect(() => {
     setLoading(true); setError(false);
     productsApi.list({ page: 1, search: deferredQuery || undefined, category: selectedCategory || undefined })
-      .then((result) => setProducts(result.results)).catch(() => setError(true)).finally(() => setLoading(false));
+      .then((result) => { setProducts(result.results); setHasMore(Boolean(result.next)); setPage(1); }).catch(() => setError(true)).finally(() => setLoading(false));
   }, [deferredQuery, selectedCategory]);
+
+  const loadMore = () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    productsApi.list({ page: page + 1, search: deferredQuery || undefined, category: selectedCategory || undefined })
+      .then((result) => { setProducts((current) => [...current, ...result.results]); setHasMore(Boolean(result.next)); setPage((current) => current + 1); })
+      .catch(() => setError(true))
+      .finally(() => setLoadingMore(false));
+  };
 
   const sorted = useMemo(() => [...products].sort((a, b) => sort === "price-asc" ? Number(a.price_zmw) - Number(b.price_zmw) : sort === "price-desc" ? Number(b.price_zmw) - Number(a.price_zmw) : a.name.localeCompare(b.name)), [products, sort]);
   const updateSearch = (value: string) => { setQuery(value); setParams(value ? { q: value } : {}); };
@@ -36,6 +48,7 @@ const ProductListingPage: React.FC = () => {
     <div className="mb-7 flex gap-2 overflow-x-auto pb-1">{[{slug:"", name:"All"}, ...categories].map((category) => <button key={category.slug || "all"} onClick={() => setSelectedCategory(category.slug)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${selectedCategory === category.slug ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-600 hover:border-blue-300"}`}>{category.name}</button>)}</div>
     <div className="mb-6 flex items-center justify-between border-y border-slate-200 py-4"><p className="text-sm text-slate-500">{loading ? "Finding the best results..." : `${sorted.length} products`}</p><div className="flex items-center gap-2"><select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"><option value="featured">Featured</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option></select><button onClick={() => setView(view === "grid" ? "list" : "grid")} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700" aria-label="Change product layout">{view === "grid" ? "☷" : "▦"}</button></div></div>
     {error ? <div className="rounded-2xl border border-red-100 bg-red-50 p-10 text-center"><h2 className="font-bold text-red-800">We couldn’t load the catalogue.</h2><p className="mt-1 text-sm text-red-700">Check your connection and try again.</p></div> : loading ? <Skeletons /> : sorted.length ? <div className={view === "grid" ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "space-y-4"}>{sorted.map((product) => <ListingCard key={product.id} product={product} view={view} comparing={compareIds.includes(product.id)} onCompare={() => toggleCompare(product.id)} />)}</div> : <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-16 text-center"><p className="text-4xl">⌕</p><h2 className="mt-4 text-xl font-black">No matches yet.</h2><p className="mt-2 text-slate-500">Try a different search or browse another category.</p><button onClick={() => { setQuery(""); setSelectedCategory(""); setParams({}); }} className="mt-5 text-sm font-bold text-blue-600">Clear filters</button></div>}
+    {!loading && !error && hasMore && <div className="mt-8 flex justify-center"><button onClick={loadMore} disabled={loadingMore} className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-700 hover:border-blue-300 disabled:opacity-60">{loadingMore ? "Loading..." : "Load more products"}</button></div>}
     {compareProducts.length > 0 && <aside aria-label="Product comparison" className="sticky bottom-4 mt-8 rounded-2xl border border-blue-100 bg-slate-950 p-4 text-white shadow-2xl"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold tracking-[.14em] text-cyan-300">AI COMPARISON</p><p className="mt-1 text-sm text-slate-200">{compareProducts.map((product) => product.name).join(" · ")}</p></div><div className="flex gap-2"><button onClick={() => setCompareIds([])} className="rounded-xl px-3 py-2 text-sm font-bold text-slate-300">Clear</button><button onClick={() => window.alert(`Lingi comparison ready: ${compareProducts.map((product) => `${product.name} (${formatZMW(product.price_zmw)})`).join(" vs ")}`)} className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-950">Compare {compareProducts.length}</button></div></div></aside>}
   </main>;
 };

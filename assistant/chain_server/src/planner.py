@@ -8,6 +8,7 @@ should handle a user's query based on the query content and context.
 """
 import os
 import logging
+import re
 import sys
 import time
 from typing import Tuple, Dict, List
@@ -23,6 +24,35 @@ logging.basicConfig(
     stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
+
+
+# Product-type nouns that reliably indicate a catalog browse request. Used as a
+# deterministic safety net: small local models frequently mis-route bare product
+# nouns ("cardigan", "boys t shirt") to chatter, which then has no catalog to
+# ground on and hallucinates product names and prices.
+BROWSE_KEYWORDS = {
+    "shirt", "shirts", "tshirt", "tshirts", "t-shirt", "t-shirts", "tee", "tees",
+    "trouser", "trousers", "pant", "pants", "jeans", "short", "shorts",
+    "dress", "dresses", "skirt", "skirts", "blouse", "blouses", "top", "tops",
+    "jacket", "jackets", "coat", "coats", "hoodie", "hoodies", "sweater",
+    "sweaters", "cardigan", "cardigans", "suit", "suits", "outfit", "outfits",
+    "shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "sandal", "sandals",
+    "bag", "bags", "handbag", "handbags", "backpack", "backpacks", "purse",
+    "earring", "earrings", "necklace", "necklaces", "bracelet", "bracelets",
+    "ring", "rings", "sunglasses", "watch", "watches", "smartwatch",
+    "smartwatches", "phone", "phones", "headphone", "headphones", "earbud",
+    "earbuds", "speaker", "speakers", "charger", "chargers", "laptop", "laptops",
+    "skincare", "makeup", "cosmetics", "fragrance", "perfume", "beauty",
+    "clothing", "clothes", "apparel", "accessories", "boys", "girls", "kids",
+    "children", "men", "womens", "mens", "women",
+}
+
+# Substrings that mark a cart operation; when present we never override the
+# planner's decision, since cart intents must win over browse keywords
+# ("add the boys t shirt to my cart").
+CART_MARKERS = (
+    "cart", "add ", "remove", "delete", "checkout", "subtotal", "my total", "buy ",
+)
 
 
 # Configuration will be loaded by the main application
@@ -150,6 +180,18 @@ class PlannerAgent:
         
         return normalized
 
+    def _looks_like_browse(self, query: str) -> bool:
+        """Heuristically detect a catalog browse request.
+
+        Returns False for cart operations so an "add ..." instruction is never
+        rerouted into a search.
+        """
+        text = (query or "").lower()
+        if any(marker in text for marker in CART_MARKERS):
+            return False
+        tokens = set(re.findall(r"[a-z']+", text))
+        return bool(tokens & BROWSE_KEYWORDS)
+
     def invoke(
         self,
         state: State,
@@ -188,6 +230,15 @@ class PlannerAgent:
         
         # Normalize the agent name
         normalized_agent = self._normalize_agent_name(response_content)
+
+        # Deterministic safety net: the local 3B router often sends bare product
+        # nouns to chatter, which then has no catalog and fabricates items.
+        if normalized_agent == "chatter" and self._looks_like_browse(state.query):
+            logger.info(
+                "PlannerAgent.invoke() | LLM chose 'chatter' for a browse query; "
+                "overriding to 'retriever' to keep the reply grounded in the catalog."
+            )
+            normalized_agent = "retriever"
         
         # Update the state
         output_state.next_agent = normalized_agent

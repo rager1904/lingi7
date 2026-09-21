@@ -72,6 +72,17 @@ class ChatterAgent:
         live in the running context as prose and are excluded so the
         chatter does not re-claim out-of-scope items.
         """
+        products = getattr(state, "products", None)
+        if products:
+            lines = []
+            for product in products:
+                name = product.get("name", "")
+                price = product.get("price")
+                if price:
+                    lines.append(f"- {name} — K{price}")
+                else:
+                    lines.append(f"- {name}")
+            return "\n".join(lines)
         if not state.retrieved:
             return "(no fresh catalog results this turn)"
         return "\n".join(f"- {name}" for name in state.retrieved.keys())

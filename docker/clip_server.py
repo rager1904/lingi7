@@ -1,6 +1,6 @@
 """CLIP image embedding server — OpenAI-compatible embeddings API.
 
-Serves openai/clip-vit-large-patch14 via HuggingFace transformers.
+Serves openai/clip-vit-base-patch32 via HuggingFace transformers.
 Provides the /v1/embeddings endpoint compatible with the catalog_retriever.
 """
 
@@ -10,7 +10,7 @@ import logging
 import os
 import torch
 import torch.nn.functional as F
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 
@@ -20,7 +20,7 @@ logger = logging.getLogger("clip-server")
 app = FastAPI()
 
 class EmbeddingRequest(BaseModel):
-    model: str = "openai/clip-vit-large-patch14"
+    model: str = "openai/clip-vit-base-patch32"
     input: list | str
 
 class EmbeddingResponse(BaseModel):
@@ -37,12 +37,35 @@ model = None
 def load():
     global processor, model
     from transformers import CLIPProcessor, CLIPModel
-    model_id = os.environ.get("CLIP_MODEL_ID", "openai/clip-vit-large-patch14")
+    model_id = os.environ.get("CLIP_MODEL_ID", "openai/clip-vit-base-patch32")
     logger.info(f"Loading {model_id} on {device}...")
     processor = CLIPProcessor.from_pretrained(model_id)
     model = CLIPModel.from_pretrained(model_id).to(device)
     model.eval()
     logger.info("CLIP model loaded")
+
+
+def _as_embedding(output, projection):
+    """Normalise a CLIP feature output to a 2-D tensor.
+
+    Depending on the transformers version, ``get_image_features`` /
+    ``get_text_features`` return either a bare tensor or a
+    ``BaseModelOutputWithPooling``. Handle both, applying the projection when
+    only the un-projected pooled output is available.
+    """
+    if torch.is_tensor(output):
+        return output
+    for attr in ("image_embeds", "text_embeds"):
+        value = getattr(output, attr, None)
+        if value is not None:
+            return value
+    pooled = getattr(output, "pooler_output", None)
+    if pooled is not None:
+        return projection(pooled)
+    last_hidden = getattr(output, "last_hidden_state", None)
+    if last_hidden is not None:
+        return projection(last_hidden[:, 0])
+    raise TypeError(f"Unsupported CLIP output type: {type(output)!r}")
 
 @app.post("/v1/embeddings")
 async def embed(req: EmbeddingRequest):
@@ -61,12 +84,12 @@ async def embed(req: EmbeddingRequest):
             pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             inputs = processor(images=pil_image, return_tensors="pt").to(device)
             with torch.no_grad():
-                emb = model.get_image_features(**inputs)
+                emb = _as_embedding(model.get_image_features(**inputs), model.visual_projection)
         else:
             # Text input
             inputs = processor(text=item, return_tensors="pt", padding=True).to(device)
             with torch.no_grad():
-                emb = model.get_text_features(**inputs)
+                emb = _as_embedding(model.get_text_features(**inputs), model.text_projection)
 
         emb = F.normalize(emb, p=2, dim=1)
         embeddings.append(emb[0].cpu().tolist())
@@ -79,4 +102,6 @@ async def embed(req: EmbeddingRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model_loaded": model is not None}
+    if model is None or processor is None:
+        raise HTTPException(status_code=503, detail="CLIP model not loaded")
+    return {"status": "healthy", "model_loaded": True}

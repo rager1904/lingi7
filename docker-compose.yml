@@ -509,6 +509,19 @@ services:
       - SHARED_CONFIG_ROOT=/app/shared/configs
     volumes:
       - ./assistant/shared:/app/shared
+      # Django media (product images) so the retriever can embed the CSV/DB
+      # image paths, which are resolved as /app/shared/media/<media-path>.
+      - media_files:/app/shared/media
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8010/health').status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 300s
     depends_on:
       milvus:
         condition: service_healthy

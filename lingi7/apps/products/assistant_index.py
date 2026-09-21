@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -139,8 +140,25 @@ class AssistantCatalogIndexer:
             return result
 
         timeout = getattr(settings, "CATALOG_RETRIEVER_TIMEOUT", 60)
+        attempts = getattr(settings, "CATALOG_RETRIEVER_PUSH_ATTEMPTS", 5)
         for start in range(0, len(rows), batch_size):
             batch = rows[start : start + batch_size]
+            if cls._post_batch(base_url, batch, timeout, attempts):
+                result["pushed"] += len(batch)
+            else:
+                result["failed"] += len(batch)
+        return result
+
+    @staticmethod
+    def _post_batch(
+        base_url: str,
+        batch: list[dict[str, str]],
+        timeout: int,
+        attempts: int,
+        base_delay: float = 2.0,
+    ) -> bool:
+        """POST one batch, retrying transient failures (e.g. a cold retriever)."""
+        for attempt in range(1, attempts + 1):
             try:
                 response = requests.post(
                     f"{base_url}/index/products",
@@ -148,13 +166,25 @@ class AssistantCatalogIndexer:
                     timeout=timeout,
                 )
                 response.raise_for_status()
-                result["pushed"] += len(batch)
+                return True
             except requests.RequestException as exc:
-                logger.warning(
-                    "Assistant bulk index push failed for batch %s: %s", start, exc
+                if attempt >= attempts:
+                    logger.warning(
+                        "Assistant bulk index push failed after %s attempt(s): %s",
+                        attempts,
+                        exc,
+                    )
+                    return False
+                delay = base_delay * (2 ** (attempt - 1))
+                logger.info(
+                    "Assistant bulk index push attempt %s/%s failed (%s); retrying in %.0fs",
+                    attempt,
+                    attempts,
+                    exc,
+                    delay,
                 )
-                result["failed"] += len(batch)
-        return result
+                time.sleep(delay)
+        return False
 
     @staticmethod
     def _push_to_retriever(row: dict[str, str]) -> None:

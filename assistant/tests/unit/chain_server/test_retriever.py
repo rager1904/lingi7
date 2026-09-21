@@ -217,7 +217,7 @@ class TestExtractRetrievalInputs:
 
         prompt = captured["messages"][0]["content"]
         assert "Do NOT use generic browse words" in prompt
-        assert "show me anything under $100" in prompt
+        assert "show me anything under K100" in prompt
         assert entities == []
         assert filters == {"max_price": 100.0}
 

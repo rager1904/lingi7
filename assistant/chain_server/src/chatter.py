@@ -57,7 +57,7 @@ class ChatterAgent:
             price = entry.get("price")
             if price is not None:
                 try:
-                    lines.append(f"- {amount} x {name} @ ${float(price):.2f}")
+                    lines.append(f"- {amount} x {name} @ K{float(price):,.2f}")
                 except (TypeError, ValueError):
                     lines.append(f"- {amount} x {name}")
             else:

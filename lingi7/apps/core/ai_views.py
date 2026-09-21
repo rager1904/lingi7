@@ -35,9 +35,48 @@ _NUMBER = r"[0-9][0-9,]*\.?[0-9]*"
 _USD_PREFIX_RE = re.compile(r"(?i)(?<!\w)(US\$|USD|\$)\s*(" + _NUMBER + r")(?![\w$])")
 _USD_SUFFIX_RE = re.compile(r"(?i)(?<![\w$])(" + _NUMBER + r")\s*(USD|US\$)(?!\w)")
 
+# Product nouns and inventory phrasings that reliably indicate a catalog browse
+# request. Mirrors chain_server PlannerAgent.BROWSE_KEYWORDS and adds
+# "what do you sell"-style inventory words so the Django grounding fallback
+# also fires when the planner routes a browse query to chatter.
+_BROWSE_KEYWORDS = {
+    "shirt", "shirts", "tshirt", "tshirts", "t-shirt", "t-shirts", "tee", "tees",
+    "trouser", "trousers", "pant", "pants", "jeans", "short", "shorts",
+    "dress", "dresses", "skirt", "skirts", "blouse", "blouses", "top", "tops",
+    "jacket", "jackets", "coat", "coats", "hoodie", "hoodies", "sweater",
+    "sweaters", "cardigan", "cardigans", "suit", "suits", "outfit", "outfits",
+    "shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "sandal", "sandals",
+    "bag", "bags", "handbag", "handbags", "backpack", "backpacks", "purse",
+    "earring", "earrings", "necklace", "necklaces", "bracelet", "bracelets",
+    "ring", "rings", "sunglasses", "watch", "watches", "smartwatch",
+    "smartwatches", "phone", "phones", "headphone", "headphones", "earbud",
+    "earbuds", "speaker", "speakers", "charger", "chargers", "laptop", "laptops",
+    "skincare", "makeup", "cosmetics", "fragrance", "perfume", "beauty",
+    "clothing", "clothes", "apparel", "accessories", "boys", "girls", "kids",
+    "children", "men", "womens", "mens", "women",
+    "items", "item", "products", "product", "everything", "something",
+    "catalog", "stock", "offer", "offers", "available", "sale", "sell",
+    "shop", "browse", "range", "options", "goods", "merchandise",
+}
+
+# Substrings that mark a cart operation; browse grounding must never fire on
+# these ("add the boys t shirt to my cart").
+_CART_MARKERS = (
+    "cart", "add ", "remove", "delete", "checkout", "subtotal", "my total", "buy ",
+)
+
 
 def _zmw_rate() -> float:
     return get_usd_to_zmw_rate()
+
+
+def _looks_like_browse(query: str) -> bool:
+    """Heuristically detect a catalog browse request (never a cart operation)."""
+    text = (query or "").lower()
+    if any(marker in text for marker in _CART_MARKERS):
+        return False
+    tokens = set(re.findall(r"[a-z']+", text))
+    return bool(tokens & _BROWSE_KEYWORDS)
 
 
 def _usd_to_zmw(text: str) -> str:
@@ -63,23 +102,6 @@ def _usd_to_zmw(text: str) -> str:
         return f"K {amount * _zmw_rate():,.2f}"
 
     return _USD_SUFFIX_RE.sub(rep_suffix, _USD_PREFIX_RE.sub(rep_prefix, text))
-
-
-def _normalize_price(value: Any) -> str:
-    """Convert a raw product price string (possibly USD) to a numeric ZMW string.
-
-    Product-card prices rendered by the assistant may arrive as "$799",
-    "USD 799" or plain ZMW numbers. Returned as a plain decimal, e.g. "21573.00",
-    so the frontend renders it with the Kwacha symbol.
-    """
-    if value is None:
-        return "0.00"
-    cleaned = re.sub(r"(?i)[$\s,]|US\$|USD", "", str(value))
-    try:
-        amount = float(cleaned)
-    except (TypeError, ValueError):
-        return str(value)
-    return f"{amount * _zmw_rate():.2f}"
 
 
 def _visible_products():
@@ -293,7 +315,10 @@ class SimilarProductView(APIView):
 
 
 class AssistantQueryView(APIView):
-    permission_classes = [AllowAny]
+    # Cart and conversation memory are keyed by user id, so anonymous callers
+    # would all share a single cart/context. The assistant is a logged-in
+    # feature; require a JWT so each user gets isolated state.
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "assistant"
 
@@ -302,10 +327,11 @@ class AssistantQueryView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         payload = {
-            "user_id": (
-                str(request.user.pk) if request.user.is_authenticated else "anonymous"
-            ),
-            "query": data["query"],
+            "user_id": str(request.user.pk),
+            # The catalog is priced in ZMW; convert any US-dollar budget in the
+            # query (e.g. "under $100") before the chain extracts price filters,
+            # otherwise a USD number is compared against Kwacha prices.
+            "query": _usd_to_zmw(data["query"]),
             "context": data.get("context", ""),
             "image": data.get("image", ""),
             "guardrails": data.get("guardrails", True),
@@ -330,9 +356,14 @@ class AssistantQueryView(APIView):
 
                 # Ground in the Django database whenever the semantic retriever
                 # came back empty, so the reply can never hallucinate inventory
-                # that the marketplace does not actually hold.
+                # that the marketplace does not actually hold. This also covers
+                # browse queries the planner mis-routed to chatter ("what do you
+                # sell", "show me everything"), which have no catalog block.
                 intent = str(payload.get("intent", "")).strip().lower()
-                if intent == "retriever" and not products:
+                should_ground = not products and intent != "cart" and (
+                    intent == "retriever" or _looks_like_browse(data["query"])
+                )
+                if should_ground:
                     grounded = self._database_ground(data["query"], request)
                     if grounded:
                         payload["products"] = grounded
@@ -366,10 +397,12 @@ class AssistantQueryView(APIView):
     def _hydrate_products(self, items: list[dict[str, Any]], request) -> list[dict[str, Any]]:
         """Replace retriever card fields with authoritative Django values.
 
-        The Milvus catalog stores a mix of legacy USD rows and ZMW rows, so a
-        card's price string cannot be trusted on its own. When a card carries a
-        real product pk we rebuild name/price/image from the Product table;
-        otherwise we fall back to the legacy USD->ZMW normalization.
+        The Milvus catalog may still contain legacy rows whose ``pk`` maps to no
+        marketplace product (e.g. ``seed:*`` ids from an old CSV seed). Those
+        cards are dropped outright: a product that does not exist in the visible
+        catalog must never be shown, and its untrusted price string must never be
+        converted. When a card carries a real product pk we rebuild
+        name/price/image from the Product table.
         """
         pks: list[int] = []
         for item in items:
@@ -383,7 +416,7 @@ class AssistantQueryView(APIView):
             pk = str(item.get("pk", ""))
             product = by_id.get(int(pk)) if pk.isdigit() else None
             if product is None:
-                hydrated.append({**item, "price": _normalize_price(item.get("price"))})
+                logger.info("Dropping assistant card with no visible product pk=%r", pk)
                 continue
             image = ""
             img = product.images.filter(position=0).first() or product.images.first()

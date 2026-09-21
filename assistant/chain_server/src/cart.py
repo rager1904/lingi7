@@ -253,7 +253,7 @@ class CartAgent():
         """
         cart = self._get_cart(user_id)
         if not cart.contents:
-            return "Your cart is empty, so the total is $0.00."
+            return "Your cart is empty, so the total is K0.00."
 
         lines = []
         subtotal = 0.0
@@ -269,11 +269,11 @@ class CartAgent():
             line_total = float(price) * amount
             subtotal += line_total
             lines.append(
-                f"- {amount} x {item_name} @ ${float(price):.2f} = ${line_total:.2f}"
+                f"- {amount} x {item_name} @ K{float(price):,.2f} = K{line_total:,.2f}"
             )
 
         summary = "\n".join(lines)
-        total_line = f"Cart total: ${subtotal:.2f}"
+        total_line = f"Cart total: K{subtotal:,.2f}"
         if missing_price:
             names = ", ".join(missing_price)
             total_line += (

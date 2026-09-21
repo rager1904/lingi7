@@ -556,7 +556,7 @@ class TestViewCartTotal:
         _install_http_stubs(monkeypatch, cart_before=[])
 
         out = cart_agent._view_cart_total(user_id=1)
-        assert "$0.00" in out
+        assert "K0.00" in out
         assert "empty" in out.lower()
 
     def test_totals_and_line_items_rendered(
@@ -572,9 +572,9 @@ class TestViewCartTotal:
 
         out = cart_agent._view_cart_total(user_id=1)
 
-        assert "2 x Silk Dress @ $49.99 = $99.98" in out
-        assert "1 x Leather Bag @ $199.00 = $199.00" in out
-        assert "Cart total: $298.98" in out
+        assert "2 x Silk Dress @ K49.99 = K99.98" in out
+        assert "1 x Leather Bag @ K199.00 = K199.00" in out
+        assert "Cart total: K298.98" in out
 
     def test_missing_price_line_excluded_from_total(
         self, cart_agent: CartAgent, monkeypatch: pytest.MonkeyPatch
@@ -589,9 +589,9 @@ class TestViewCartTotal:
 
         out = cart_agent._view_cart_total(user_id=1)
 
-        assert "1 x Silk Dress @ $49.99 = $49.99" in out
+        assert "1 x Silk Dress @ K49.99 = K49.99" in out
         assert "2 x Mystery Item: price unavailable" in out
-        assert "Cart total: $49.99" in out
+        assert "Cart total: K49.99" in out
         assert "Mystery Item" in out  # listed in missing-price note
         assert "Re-add them" in out
 

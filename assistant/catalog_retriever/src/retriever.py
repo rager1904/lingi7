@@ -750,7 +750,10 @@ class Retriever:
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, str):
-            cleaned = value.strip().replace("$", "").replace(",", "")
+            # Tolerate currency decorations ("K 2,450.00", "$169.99", "ZMW 50").
+            cleaned = re.sub(r"[^0-9.\-]", "", value)
+            if not cleaned:
+                return None
             try:
                 return float(cleaned)
             except ValueError:

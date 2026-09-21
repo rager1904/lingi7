@@ -56,8 +56,8 @@ class TestFormatCart:
 
         rendered = ChatterAgent._format_cart(state)
 
-        assert "- 2 x Silk Dress @ $49.99" in rendered
-        assert "- 1 x Leather Bag @ $199.00" in rendered
+        assert "- 2 x Silk Dress @ K49.99" in rendered
+        assert "- 1 x Leather Bag @ K199.00" in rendered
 
     def test_renders_line_without_price_when_missing(self) -> None:
         state = State(

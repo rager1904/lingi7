@@ -104,6 +104,58 @@ class AssistantCatalogIndexer:
             writer.writeheader()
             writer.writerows(rows)
 
+    @classmethod
+    def export_rows(cls, products) -> list[dict[str, str]]:
+        """Build assistant catalog rows for an iterable of Product instances."""
+        return [cls._product_to_row(product) for product in products]
+
+    @classmethod
+    def write_csv(cls, rows: list[dict[str, str]]) -> None:
+        """Overwrite the assistant catalog CSV with exactly ``rows``.
+
+        Unlike :meth:`_upsert_csv_row`, this removes stale rows (e.g. legacy
+        demo entries) instead of preserving them, so the CSV mirrors the live
+        marketplace catalog.
+        """
+        csv_path = Path(settings.ASSISTANT_CATALOG_CSV_PATH)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with csv_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=ASSISTANT_CATALOG_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    @classmethod
+    def push_many(cls, rows: list[dict[str, str]], batch_size: int = 50) -> dict[str, int]:
+        """Push catalog rows to the live retriever in batches.
+
+        Returns ``{"pushed", "failed"}`` counts. A push failure is logged and
+        counted rather than raised so a partially available retriever does not
+        abort the whole reindex.
+        """
+        base_url = str(getattr(settings, "CATALOG_RETRIEVER_URL", "")).rstrip("/")
+        result = {"pushed": 0, "failed": 0}
+        if not base_url:
+            result["failed"] = len(rows)
+            return result
+
+        timeout = getattr(settings, "CATALOG_RETRIEVER_TIMEOUT", 60)
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
+            try:
+                response = requests.post(
+                    f"{base_url}/index/products",
+                    json={"products": batch},
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                result["pushed"] += len(batch)
+            except requests.RequestException as exc:
+                logger.warning(
+                    "Assistant bulk index push failed for batch %s: %s", start, exc
+                )
+                result["failed"] += len(batch)
+        return result
+
     @staticmethod
     def _push_to_retriever(row: dict[str, str]) -> None:
         base_url = str(getattr(settings, "CATALOG_RETRIEVER_URL", "")).rstrip("/")

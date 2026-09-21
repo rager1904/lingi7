@@ -216,7 +216,7 @@ DECISION LOGIC (apply in order, stop at the first match):
    -> Examples:
       "I need a summer top"                  -> search_entities: ["summer top"]
       "I need something for a party"         -> search_entities: ["party outfit"]
-   -> Do NOT use generic browse words such as "anything", "everything", "something", "items", "products", or "stuff" as search_entities when they are the only catalog target. For constraint-only requests like "show me anything under $100" or "what do you have on sale", return an empty search_entities list and preserve any explicit filters.
+    -> Do NOT use generic browse words such as "anything", "everything", "something", "items", "products", or "stuff" as search_entities when they are the only catalog target. For constraint-only requests like "show me anything under K100" or "what do you have on sale", return an empty search_entities list and preserve any explicit filters.
 
 CATEGORIES:
 - Choose up to three from the provided Available categories list ONLY.
@@ -224,7 +224,8 @@ CATEGORIES:
 - You may reuse the same category when only one is relevant.
 
 FILTERS:
-- Return `min_price` / `max_price` ONLY when the user explicitly states a budget ("under $50", "between 20 and 100 dollars").
+- All catalog prices are in Zambian Kwacha (ZMW / K). Treat every bare number as Kwacha.
+- Return `min_price` / `max_price` ONLY when the user explicitly states a budget ("under K500", "between K200 and K1000"). A budget written as "under $50" is converted to Kwacha before it reaches you, so emit the number as given.
 - NEVER default to 0. If no price is mentioned, OMIT the field entirely.
 - Return numeric values without currency symbols.
 
@@ -249,7 +250,7 @@ IMAGE ATTACHED TO THIS TURN:
 - DECISION LOGIC step 1 (ATTRIBUTE FOLLOW-UP echoing a name from context) DOES NOT APPLY when an image is attached.
 
 Extraction rules WITH an image:
-A. Filter-only refinement of the image ("do you have this under $100", "anything like this in blue", "is this on sale"):
+A. Filter-only refinement of the image ("do you have this under K100", "anything like this in blue", "is this on sale"):
    -> search_entities: []  (the image carries the semantic intent)
    -> STILL extract `min_price` / `max_price` from any explicit budget words ("under", "below", "less than", "no more than", "between X and Y"). Dropping the budget is a bug; always emit it when it appears.
    -> Pick one matching category from the allowed list only if the text makes it obvious; otherwise repeat the first category slot.
@@ -258,14 +259,14 @@ B. New product type alongside the image ("a bag that goes with this", "shoes lik
    -> STILL emit price filters if the user gave a budget.
 
 Worked examples (image always attached):
-  User: "do you have this product under $100"
+  User: "do you have this product under K100"
     -> search_entities: []
     -> max_price: 100
-  User: "anything like this between 50 and 80 dollars"
+  User: "anything like this between K50 and K80"
     -> search_entities: []
     -> min_price: 50
     -> max_price: 80
-  User: "a bag that goes with this under $200"
+  User: "a bag that goes with this under K200"
     -> search_entities: ["bag"]
     -> max_price: 200
   User: "show me the red one"
@@ -379,7 +380,10 @@ Worked examples (image always attached):
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, str):
-            cleaned = value.strip().replace("$", "").replace(",", "")
+            # Tolerate currency decorations ("K 2,715.00", "$100", "ZMW 50").
+            cleaned = re.sub(r"[^0-9.\-]", "", value)
+            if not cleaned:
+                return None
             try:
                 return float(cleaned)
             except ValueError:

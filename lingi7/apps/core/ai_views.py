@@ -324,10 +324,9 @@ class AssistantQueryView(APIView):
                 if isinstance(payload.get("response"), str):
                     payload["response"] = _usd_to_zmw(payload["response"])
                 products = payload.get("products")
-                if isinstance(products, list):
-                    for item in products:
-                        if isinstance(item, dict) and "price" in item:
-                            item["price"] = _normalize_price(item.get("price"))
+                if isinstance(products, list) and products:
+                    products = self._hydrate_products(products, request)
+                    payload["products"] = products
 
                 # Ground in the Django database whenever the semantic retriever
                 # came back empty, so the reply can never hallucinate inventory
@@ -363,6 +362,42 @@ class AssistantQueryView(APIView):
                 ),
                 status=status.HTTP_200_OK,
             )
+
+    def _hydrate_products(self, items: list[dict[str, Any]], request) -> list[dict[str, Any]]:
+        """Replace retriever card fields with authoritative Django values.
+
+        The Milvus catalog stores a mix of legacy USD rows and ZMW rows, so a
+        card's price string cannot be trusted on its own. When a card carries a
+        real product pk we rebuild name/price/image from the Product table;
+        otherwise we fall back to the legacy USD->ZMW normalization.
+        """
+        pks: list[int] = []
+        for item in items:
+            pk = str(item.get("pk", ""))
+            if pk.isdigit():
+                pks.append(int(pk))
+        by_id = {product.pk: product for product in _visible_products().filter(pk__in=pks)}
+
+        hydrated: list[dict[str, Any]] = []
+        for item in items:
+            pk = str(item.get("pk", ""))
+            product = by_id.get(int(pk)) if pk.isdigit() else None
+            if product is None:
+                hydrated.append({**item, "price": _normalize_price(item.get("price"))})
+                continue
+            image = ""
+            img = product.images.filter(position=0).first() or product.images.first()
+            if img and img.image:
+                image = request.build_absolute_uri(img.image.url)
+            hydrated.append(
+                {
+                    "name": product.name,
+                    "price": f"{product.price:.2f}",
+                    "image": image,
+                    "pk": str(product.pk),
+                }
+            )
+        return hydrated
 
     def _database_ground(self, query: str, request, limit: int = 5) -> list[dict[str, Any]]:
         """Ground an assistant reply in real, visible Django products.

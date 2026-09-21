@@ -396,11 +396,16 @@ class Retriever:
             logging.info(f"CATALOG RETRIEVER | Retriever.milvus_from_csv() | Directory contents at failure: {dir_contents}")
 
         # Create combined name and description strings
-        if "pk" not in df.columns:
-            df["pk"] = [
+        if "pk" in df.columns and "product_id" not in df.columns:
+            df["product_id"] = df["pk"]
+        if "product_id" not in df.columns:
+            df["product_id"] = [
                 f"seed:{idx}:{str(name).strip().lower().replace(' ', '-')}"
                 for idx, name in enumerate(df["name"].tolist())
             ]
+        # Milvus reserves the "pk" metadata key — store record identity under
+        # a custom "product_id" key instead.
+        df = df.drop(columns=["pk"], errors="ignore")
         metadatas = df.to_dict(orient="records")
         combined_texts = [f"{name} | {desc} | {category},{subcategory}" for name, desc, category, subcategory in zip(df["name"].tolist(), df["description"].tolist(), df["category"].tolist(), df["subcategory"].tolist())]
         
@@ -452,12 +457,12 @@ class Retriever:
         Append product records directly to Milvus.
 
         Records must include the same metadata columns used by the startup CSV:
-        pk, category, subcategory, name, description, url, price, image.
-        Re-indexing is append-only; retrieval deduplicates by pk at query time.
+        product_id, category, subcategory, name, description, url, price, image.
+        Re-indexing is append-only; retrieval deduplicates by product_id at query time.
         """
         normalised: List[Dict[str, Any]] = []
         for record in records:
-            pk = str(record.get("pk") or "").strip()
+            pk = str(record.get("pk") or record.get("product_id") or "").strip()
             name = str(record.get("name") or "").strip()
             description = str(record.get("description") or "").strip()
             if not pk or not name or not description:
@@ -466,7 +471,7 @@ class Retriever:
             subcategory = str(record.get("subcategory") or category).strip()
             normalised.append(
                 {
-                    "pk": pk,
+                    "product_id": pk,
                     "category": category,
                     "subcategory": subcategory,
                     "name": name,
@@ -606,7 +611,7 @@ class Retriever:
         seen_ids = set()
         final_results = [] 
         for res in interleaved_results:
-            pk_value = res[0].metadata.get("pk") 
+            pk_value = res[0].metadata.get("product_id") 
             id_ = str(pk_value) if pk_value is not None else None 
             if id_ is not None and id_ not in seen_ids:
                 seen_ids.add(id_)
@@ -637,7 +642,7 @@ class Retriever:
             )
 
         final_texts = [res[0].page_content + f"\nPRICE: {res[0].metadata['price']}" for res in ranked_results]
-        final_ids = [str(res[0].metadata["pk"]) for res in ranked_results]
+        final_ids = [str(res[0].metadata["product_id"]) for res in ranked_results]
         final_sims = [res[1] for res in ranked_results]
         final_names = [res[0].metadata['name'] for res in ranked_results]
         final_images = [res[0].metadata['image'] for res in ranked_results]

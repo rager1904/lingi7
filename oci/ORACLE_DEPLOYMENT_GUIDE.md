@@ -258,6 +258,20 @@ bash oci/scripts/point-flux-trellis-to-gpu.sh <GPU_IP>
 docker compose restart enrichment-backend
 ```
 
+### Reconnect & update to the latest code (this CPU host)
+
+```bash
+ssh ubuntu@84.12.97.75        # this environment's public IP
+cd /opt/lingi7 && git pull --ff-only
+docker compose -f docker-compose.yml -f docker-compose.oci.yml up -d --force-recreate lingi7-web lingi7-celery lingi7-beat
+docker compose -f docker-compose.yml up -d --force-recreate embeddings image-embeddings
+docker compose -f docker-compose.yml -f docker-compose.oci.yml exec lingi7-web python manage.py migrate --noinput
+```
+
+> `up -d --force-recreate` ensures config-only changes (commands, healthchecks)
+> take effect without a full image rebuild. Bind-mounted code (`./lingi7`) is
+> already current after the `git pull`.
+
 ### Final wiring check
 
 ```bash

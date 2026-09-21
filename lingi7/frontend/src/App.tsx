@@ -34,6 +34,7 @@ const HomePage           = lazy(() => import("./pages/HomePage"));
 const AboutPage          = lazy(() => import("./pages/AboutPage"));
 const PrivacyPage        = lazy(() => import("./pages/PrivacyPage"));
 const TermsPage          = lazy(() => import("./pages/TermsPage"));
+const AssistantPage       = lazy(() => import("./pages/AssistantPage"));
 const ProductListingPage = lazy(() => import("./pages/ProductListingPage"));
 const ShopDirectoryPage  = lazy(() => import("./pages/ShopDirectoryPage"));
 const StorefrontPage     = lazy(() => import("./pages/StorefrontPage"));
@@ -184,6 +185,7 @@ const App: React.FC = () => (
         <Route path="/about"            element={<AboutPage />} />
         <Route path="/privacy"          element={<PrivacyPage />} />
         <Route path="/terms"            element={<TermsPage />} />
+        <Route path="/assistant"        element={<AssistantPage />} />
 
         {/* Protected */}
         <Route element={<RequireAuth />}>

@@ -22,6 +22,102 @@ import logging
 import time
 
 
+_BUDGET_RANGE_RE = re.compile(
+    r"\bbetween\s*(?:K\s*|\$\s*|ZMW\s*|KZMW\s*)?([0-9][0-9,.]*)\s*(?:and|to|-)\s*(?:K\s*|\$\s*|ZMW\s*|KZMW\s*)?([0-9][0-9,.]*)\b",
+    re.IGNORECASE,
+)
+_BUDGET_FROM_TO_RE = re.compile(
+    r"\bfrom\s*(?:K\s*|\$\s*|ZMW\s*|KZMW\s*)?([0-9][0-9,.]*)\s*(?:to|up\s*to)\s*(?:K\s*|\$\s*|ZMW\s*|KZMW\s*)?([0-9][0-9,.]*)\b",
+    re.IGNORECASE,
+)
+_BUDGET_CEILING_RE = re.compile(
+    r"\b(?:under|below|no\s*more\s*than|less\s*than|at\s*most|up\s*to|within|max(?:imum)?|\u2264)\s*(?:K\s*|\$\s*|ZMW\s*|KZMW\s*)?([0-9][0-9,.]*)\b",
+    re.IGNORECASE,
+)
+_BUDGET_FLOOR_RE = re.compile(
+    r"\b(?:over|above|(?<!no\s)more\s*than|at\s*least|min(?:imum)?|from)\s*(?:K\s*|\$\s*|ZMW\s*|KZMW\s*)?([0-9][0-9,.]*)\b",
+    re.IGNORECASE,
+)
+_BUDGET_KEYWORDS = (
+    "under", "below", "less than", "no more than", "at most", "up to",
+    "within", "between", "more than", "over", "above", "at least",
+    "maximum", "max", "minimum", "min", "\u2264",
+)
+
+
+def _clean_number(raw: str) -> float:
+    """Parse a possibly-currency-decorated number into a float, 0 if invalid."""
+    cleaned = re.sub(r"[^0-9.\-]", "", raw or "")
+    try:
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _extract_budget(query_text: str) -> Dict[str, float]:
+    """Deterministically pull min/max price out of a budget clause.
+
+    Small hosted LLMs (e.g. llama3.2:3b) frequently route a budget
+    ("under K200") into search_entities instead of the max_price tool field.
+    Regex extraction backstops that so a stated budget is never dropped.
+    """
+    budget: Dict[str, float] = {}
+    text = query_text or ""
+    range_match = _BUDGET_RANGE_RE.search(text)
+    if range_match:
+        low, high = _clean_number(range_match.group(1)), _clean_number(range_match.group(2))
+        if low > 0 and high > 0:
+            budget["min_price"] = low
+            budget["max_price"] = high
+    from_to_match = _BUDGET_FROM_TO_RE.search(text)
+    if from_to_match:
+        low, high = _clean_number(from_to_match.group(1)), _clean_number(from_to_match.group(2))
+        if low > 0 and high > 0:
+            budget["min_price"] = low
+            budget["max_price"] = high
+    ceiling = _BUDGET_CEILING_RE.search(text)
+    if ceiling:
+        value = _clean_number(ceiling.group(1))
+        if value > 0:
+            budget["max_price"] = value
+    floor = _BUDGET_FLOOR_RE.search(text)
+    if floor:
+        value = _clean_number(floor.group(1))
+        if value > 0:
+            budget["min_price"] = value
+    if ("min_price" in budget and "max_price" in budget
+            and budget["min_price"] > budget["max_price"]):
+        budget.pop("min_price")
+        budget.pop("max_price")
+    return budget
+
+
+def _is_budget_phrase(phrase: Any) -> bool:
+    """True for entities that are budget clauses rather than product terms."""
+    if not isinstance(phrase, str):
+        return False
+    e = phrase.strip()
+    if not e:
+        return True
+    lowered = e.lower()
+    if re.search(r"[0-9]", e) is None:
+        return False
+    if re.fullmatch(r"(?:\$|k\s*|zmw\s*|kzmw\s*)?[0-9][0-9,.]*", lowered):
+        return True
+    return any(keyword in lowered for keyword in _BUDGET_KEYWORDS)
+
+
+def _strip_budget_clauses(text: str) -> str:
+    """Remove budget clauses from a raw query, leaving the product intent."""
+    if not text:
+        return text
+    stripped = _BUDGET_RANGE_RE.sub(" ", text)
+    stripped = _BUDGET_FROM_TO_RE.sub(" ", stripped)
+    stripped = _BUDGET_CEILING_RE.sub(" ", stripped)
+    stripped = _BUDGET_FLOOR_RE.sub(" ", stripped)
+    return re.sub(r"\s+", " ", stripped).strip()
+
+
 def setup_logging():
     logging.basicConfig(
         level=logging.INFO,
@@ -175,6 +271,7 @@ class RetrieverAgent():
         category_list = self.categories
         entity_list = []
         filters: Dict[str, float] = {}
+        budget_from_query: Dict[str, float] = _extract_budget(query_text)
         entities: List[str] = [query_text] if query_text else []
         categories = category_list
 
@@ -345,13 +442,22 @@ Worked examples (image always attached):
 
                 filters = self._normalize_filters(response_dict)
 
+                # Backstop budget extraction. Ollama-class extractors often
+                # stuff "under K200" into search_entities and omit max_price
+                # entirely; deterministic regex parsing keeps the budget live.
+                for key in ("min_price", "max_price"):
+                    if key not in filters and key in budget_from_query:
+                        filters[key] = budget_from_query[key]
+
             # Drop blank/whitespace-only entities regardless of how they got
             # there. The text-embedding endpoint 400s on empty input, so this
             # keeps us safe even if the extractor returns `[""]` via a quirky
-            # tool-call serialization.
+            # tool-call serialization. Entities that are budget clauses
+            # ("under K200", "K200") are also dropped so they never pollute the
+            # text-embedding search.
             entities = [
                 e for e in entities
-                if isinstance(e, str) and e.strip()
+                if isinstance(e, str) and e.strip() and not _is_budget_phrase(e)
             ]
 
             # When an image is attached, the LLM is instructed to return empty
@@ -360,9 +466,14 @@ Worked examples (image always attached):
             # entry to keep the text branch alive and to size the image
             # search's k-multiplier. For text-only browse queries ("what do you
             # have"), an empty entity list would make the catalog fall back to a
-            # meaningless placeholder, so use the raw query as the signal.
+            # meaningless placeholder, so use the raw query as the signal --
+            # with any budget clause stripped so it can't be embedded as text.
             if not entities:
-                entities = [user_question]
+                if budget_from_query:
+                    search_text = _strip_budget_clauses(user_question)
+                    entities = [search_text] if search_text else [user_question]
+                else:
+                    entities = [user_question]
 
             logging.info(
                 "RetrieverAgent | _extract_retrieval_inputs() | "

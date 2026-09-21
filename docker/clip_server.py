@@ -44,29 +44,6 @@ def load():
     model.eval()
     logger.info("CLIP model loaded")
 
-
-def _as_embedding(output, projection):
-    """Normalise a CLIP feature output to a 2-D tensor.
-
-    Depending on the transformers version, ``get_image_features`` /
-    ``get_text_features`` return either a bare tensor or a
-    ``BaseModelOutputWithPooling``. Handle both, applying the projection when
-    only the un-projected pooled output is available.
-    """
-    if torch.is_tensor(output):
-        return output
-    for attr in ("image_embeds", "text_embeds"):
-        value = getattr(output, attr, None)
-        if value is not None:
-            return value
-    pooled = getattr(output, "pooler_output", None)
-    if pooled is not None:
-        return projection(pooled)
-    last_hidden = getattr(output, "last_hidden_state", None)
-    if last_hidden is not None:
-        return projection(last_hidden[:, 0])
-    raise TypeError(f"Unsupported CLIP output type: {type(output)!r}")
-
 @app.post("/v1/embeddings")
 async def embed(req: EmbeddingRequest):
     if isinstance(req.input, str):
@@ -84,12 +61,20 @@ async def embed(req: EmbeddingRequest):
             pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             inputs = processor(images=pil_image, return_tensors="pt").to(device)
             with torch.no_grad():
-                emb = _as_embedding(model.get_image_features(**inputs), model.visual_projection)
+                vision_outputs = model.vision_model(**inputs)
+                pooled = vision_outputs.pooler_output
+                if pooled is None:
+                    pooled = vision_outputs.last_hidden_state[:, 0]
+                emb = model.visual_projection(pooled)
         else:
             # Text input
             inputs = processor(text=item, return_tensors="pt", padding=True).to(device)
             with torch.no_grad():
-                emb = _as_embedding(model.get_text_features(**inputs), model.text_projection)
+                text_outputs = model.text_model(**inputs)
+                pooled = text_outputs.pooler_output
+                if pooled is None:
+                    pooled = text_outputs.last_hidden_state[:, 0]
+                emb = model.text_projection(pooled)
 
         emb = F.normalize(emb, p=2, dim=1)
         embeddings.append(emb[0].cpu().tolist())

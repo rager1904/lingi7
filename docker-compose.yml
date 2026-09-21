@@ -525,7 +525,7 @@ services:
       context: ./assistant/memory_retriever
     container_name: lingi7-memory-retriever
     volumes:
-      - memory_retriever_data:/app
+      - memory_retriever_data:/app/data
     networks:
       - lingi7-platform-net
 

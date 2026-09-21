@@ -9,20 +9,20 @@ from typing import Optional
 import logging
 import time
 
-DATABASE_URL = "sqlite:///./context.db"
+DATABASE_URL = "sqlite:////app/data/context.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True)
     context = Column(String, default="")
 
 class CartItem(Base):
     __tablename__ = "cart_items"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
+    user_id = Column(String, index=True)
     item = Column(String)
     amount = Column(Integer)
     price = Column(Float, nullable=True)
@@ -68,16 +68,16 @@ def _cart_item_dict(item: CartItem) -> dict:
 
 
 @app.get("/user/{user_id}")
-async def get_user(user_id: int):
+async def get_user(user_id: str):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
-    cart_items = db.query(CartItem).filter(CartItem.id == user_id).all()
+    cart_items = db.query(CartItem).filter(CartItem.user_id == user_id).all()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"id": user.id, "context": user.context, "cart": [_cart_item_dict(item) for item in cart_items]}
 
 @app.get("/user/{user_id}/cart")
-async def report_cart(user_id: int):
+async def report_cart(user_id: str):
     db = SessionLocal()
     cart_items = db.query(CartItem).filter(CartItem.user_id == user_id).all()
     if not cart_items:
@@ -92,7 +92,7 @@ async def report_cart(user_id: int):
         }
   
 @app.get("/user/{user_id}/context")
-async def get_context(user_id: int):
+async def get_context(user_id: str):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -107,7 +107,7 @@ async def get_context(user_id: int):
         }
 
 @app.post("/user/{user_id}/cart/add")
-async def add_to_cart(user_id: int, item_update: ItemUpdate):
+async def add_to_cart(user_id: str, item_update: ItemUpdate):
     db = SessionLocal()
     item = item_update.item
     amount = item_update.amount
@@ -128,7 +128,7 @@ async def add_to_cart(user_id: int, item_update: ItemUpdate):
         }
 
 @app.post("/user/{user_id}/cart/remove")
-async def remove_cart(user_id: int, item_update: ItemUpdate):
+async def remove_cart(user_id: str, item_update: ItemUpdate):
     db = SessionLocal()
     item = item_update.item
     amount = item_update.amount
@@ -146,7 +146,7 @@ async def remove_cart(user_id: int, item_update: ItemUpdate):
         }
 
 @app.post("/user/{user_id}/cart/clear")
-async def clear_cart(user_id: int):
+async def clear_cart(user_id: str):
     db = SessionLocal()
     cart_items = db.query(CartItem).filter(CartItem.user_id == user_id).all()
     if not cart_items:
@@ -160,7 +160,7 @@ async def clear_cart(user_id: int):
         }
 
 @app.post("/user/{user_id}/context/add")
-async def add_context(user_id: int, context_update: ContextUpdate):
+async def add_context(user_id: str, context_update: ContextUpdate):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -175,7 +175,7 @@ async def add_context(user_id: int, context_update: ContextUpdate):
         }
 
 @app.post("/user/{user_id}/context/replace")
-async def replace_context(user_id: int, context_update: ContextUpdate):
+async def replace_context(user_id: str, context_update: ContextUpdate):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -190,7 +190,7 @@ async def replace_context(user_id: int, context_update: ContextUpdate):
         }
 
 @app.post("/user/{user_id}/context/clear")
-async def clear_context(user_id: int):
+async def clear_context(user_id: str):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -203,7 +203,7 @@ async def clear_context(user_id: int):
         }
 
 @app.post("/user/{user_id}/clear")
-async def clear_user(user_id: int):
+async def clear_user(user_id: str):
     db = SessionLocal()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

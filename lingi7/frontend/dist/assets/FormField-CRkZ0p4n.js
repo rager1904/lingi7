@@ -1,0 +1,2 @@
+import{j as s}from"./index-DnjrXWMW.js";const c=({label:x,required:a,error:e,hint:t,children:m})=>s.jsxs("div",{children:[s.jsxs("label",{className:"mb-1 block text-sm font-medium text-gray-700",children:[x,a&&s.jsx("span",{className:"text-red-500",children:" *"})]}),m,t&&!e&&s.jsx("p",{className:"mt-1 text-xs text-gray-500",children:t}),e&&s.jsx("p",{className:"mt-1 text-xs text-red-600",children:e})]});export{c as F};
+//# sourceMappingURL=FormField-CRkZ0p4n.js.map

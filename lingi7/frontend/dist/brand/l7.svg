@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="200" viewBox="0 0 560 200" role="img" aria-label="Lingi7">
+  <defs>
+    <linearGradient id="silver" x2=".6" y2="1"><stop stop-color="#ffffff"/><stop offset=".45" stop-color="#edf3f7"/><stop offset="1" stop-color="#94a8bc"/></linearGradient>
+    <linearGradient id="color" x1="0" y1="0" x2="1" y2=".7"><stop stop-color="#70ffd0"/><stop offset=".35" stop-color="#0bd6c4"/><stop offset="1" stop-color="#008bff"/></linearGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="5"/></filter>
+    <radialGradient id="ambient"><stop stop-color="#103c46"/><stop offset="1" stop-color="#070e1b"/></radialGradient>
+  </defs>
+  
+  
+  <g class="body" transform="translate(0 0)">
+    <path fill="url(#silver)" stroke="#e5f2ff" stroke-width=".7" d="M231 36 H223 Q203 36 203 58 V143 Q203 166 227 166 H280 L238 124 Q231 117 231 108 Z"/>
+    <g class="letters" opacity="0" fill="url(#silver)" stroke="#e5f2ff" stroke-width=".5" transform="translate(291 0)">
+      <circle cx="10" cy="63" r="10"/><path d="M1 82H19V166H1Z"/>
+      <path d="M30 166V116Q30 80 65 80Q100 80 100 116V166H81V116Q81 99 65 99Q49 99 49 116V166Z"/>
+      <path fill-rule="evenodd" d="M147 80Q182 80 182 114V160Q182 188 151 188H123V171H150Q163 171 163 157Q156 163 144 163Q111 163 111 122Q111 80 147 80ZM147 99Q130 99 130 122Q130 145 147 145Q163 145 163 122Q163 99 147 99Z"/>
+      <circle cx="204" cy="63" r="10"/><path d="M195 82H213V166H195Z"/>
+    </g>
+    <g class="seven" transform="translate(0 0)">
+      <path fill="#24d9d3" opacity=".65" filter="url(#glow)" d="M246 47H327Q341 47 334 64L279 159L260 139L303 72H270Q255 72 251 59Z"/>
+      <path fill="url(#color)" stroke="#7efaff" stroke-width=".9" d="M246 47H327Q341 47 334 64L279 159L260 139L303 72H270Q255 72 251 59Z"/>
+    </g>
+  </g>
+  </svg>

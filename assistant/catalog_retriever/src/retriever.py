@@ -698,11 +698,13 @@ class Retriever:
                 logging.info("CATALOG RETRIEVER | Image search - returning all similarity-based results without category filtering")
             return final_texts, final_ids, final_sims, final_names, final_images
         
-        # For text searches, if no categories provided, return empty
+        # For text searches, when no categories are provided we still return the
+        # similarity-ranked results. Requiring a category silently zeroed out
+        # every browse query and left the assistant with nothing to ground on.
         if not categories:
             if verbose:
-                logging.info("CATALOG RETRIEVER | No categories provided for text search, returning empty.")
-            return [], [], [], [], []
+                logging.info("CATALOG RETRIEVER | No categories provided for text search; returning similarity-based results.")
+            return final_texts, final_ids, final_sims, final_names, final_images
 
         # Filter by category - check if any user category matches any product category/subcategory
         filtered = []
@@ -728,9 +730,12 @@ class Retriever:
                 filtered.append((text, id_, sim, name, img))
 
         if not filtered:
+            # A category mismatch (the extractor's vocabulary rarely lines up
+            # exactly with the stored taxonomy) must not discard good semantic
+            # matches. Fall back to the unfiltered ranked window instead.
             if verbose:
-                logging.info("CATALOG RETRIEVER | No matches after category filtering.")
-            return [], [], [], [], []
+                logging.info("CATALOG RETRIEVER | No matches after category filtering; returning similarity-based results.")
+            return final_texts, final_ids, final_sims, final_names, final_images
 
         texts_out, ids_out, sims_out, names_out, images_out = zip(*filtered)
         if verbose:

@@ -63,6 +63,10 @@ class State(BaseModel):
         default_factory=dict,
         description="Dictionary of retrieved product information"
     )
+    products: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Structured product cards retrieved this turn (name, price, image, pk)"
+    )
     next_agent: str = Field(default="", description="Next agent to route to")
     guardrails: bool = Field(default=True, description="Enable content safety checks")
     timings: Annotated[Dict[str, float], ior] = Field(

@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List, Any
 import logging
 import sys
 import time
@@ -91,6 +91,8 @@ class QueryResponse(BaseModel):
     """Response model for shopping queries."""
     response: str
     images: Dict[str, str] = {}
+    products: List[Dict[str, Any]] = []
+    intent: str = ""
     timings: Dict[str, float] = {}
 
 
@@ -164,7 +166,9 @@ async def process_query_timing(request: QueryRequest):
         # Create response with timing information
         response = QueryResponse(
             response=out_state_dict["response"],
-            images={},
+            images=out_state_dict.get("retrieved", {}),
+            products=out_state_dict.get("products", []),
+            intent=out_state_dict.get("next_agent", ""),
             timings=out_state_dict["timings"]
         )
         response.timings["total"] = total_time

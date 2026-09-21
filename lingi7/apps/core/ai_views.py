@@ -319,6 +319,7 @@ class AssistantQueryView(APIView):
             )
             response.raise_for_status()
             payload = response.json()
+            source = "shopping-assistant"
             if isinstance(payload, dict):
                 if isinstance(payload.get("response"), str):
                     payload["response"] = _usd_to_zmw(payload["response"])
@@ -327,33 +328,78 @@ class AssistantQueryView(APIView):
                     for item in products:
                         if isinstance(item, dict) and "price" in item:
                             item["price"] = _normalize_price(item.get("price"))
-            return Response(_response(payload, source="shopping-assistant"))
+
+                # Ground in the Django database whenever the semantic retriever
+                # came back empty, so the reply can never hallucinate inventory
+                # that the marketplace does not actually hold.
+                intent = str(payload.get("intent", "")).strip().lower()
+                if intent == "retriever" and not products:
+                    grounded = self._database_ground(data["query"], request)
+                    if grounded:
+                        payload["products"] = grounded
+                        names = ", ".join(item["name"] for item in grounded)
+                        payload["response"] = (
+                            "Here are matching products from the marketplace "
+                            f"catalog: {names}."
+                        )
+                        source = "database-grounding"
+            return Response(_response(payload, source=source))
         except Exception as exc:
             logger.warning("Shopping assistant service failed; using fallback response: %s", exc)
-            try:
-                min_p = _decimal_param(request.data.get("min_price"))
-                max_p = _decimal_param(request.data.get("max_price"))
-            except Exception:
-                min_p, max_p = None, None
-            products = SemanticProductSearchView()._database_search(
-                query=data["query"],
-                category="",
-                min_price=min_p,
-                max_price=max_p,
-                condition="",
-                limit=5,
-            )
+            grounded = self._database_ground(data["query"], request)
+            names = ", ".join(item["name"] for item in grounded)
             return Response(
                 _response(
                     {
                         "response": (
                             "The assistant service is temporarily unavailable. "
-                            "Here are matching catalog results from the marketplace database."
+                            "Here are matching products from the marketplace catalog"
+                            + (f": {names}." if names else ".")
                         ),
-                        "products": _serialize_products(products, request),
+                        "products": grounded,
                         "timings": {},
                     },
                     source="database-fallback",
                 ),
                 status=status.HTTP_200_OK,
             )
+
+    def _database_ground(self, query: str, request, limit: int = 5) -> list[dict[str, Any]]:
+        """Ground an assistant reply in real, visible Django products.
+
+        Used when the semantic retriever returns nothing so the reply can never
+        invent inventory. Token-based so multi-word queries ("girls button up
+        cardigan") still match, and falls back to the newest live products for
+        pure browse requests ("what do you have").
+        """
+        stop = {
+            "the", "and", "for", "you", "your", "show", "have", "what", "whats",
+            "with", "want", "need", "me", "my", "any", "some", "available", "is",
+            "are", "of", "to", "in", "on", "do", "does", "looking", "find", "get",
+            "please", "can", "could", "would", "there", "this", "that",
+        }
+        tokens = re.findall(r"[A-Za-z0-9']+", query or "")
+        terms = [t for t in tokens if len(t) > 2 and t.lower() not in stop][:6]
+
+        qs = _visible_products()
+        matches: list[Product] = []
+        if terms:
+            text_q = Q()
+            for term in terms:
+                text_q |= Q(name__icontains=term) | Q(description__icontains=term)
+            if connection.vendor != "sqlite":
+                for term in terms:
+                    text_q |= Q(search_keywords__icontains=term)
+            matches = list(qs.filter(text_q).order_by("-created_at")[:limit])
+        if not matches:
+            matches = list(qs.order_by("-created_at")[:limit])
+
+        return [
+            {
+                "name": item["name"],
+                "price": str(item["price"]),
+                "image": item.get("primary_image") or "",
+                "pk": str(item["id"]),
+            }
+            for item in _serialize_products(matches, request)
+        ]

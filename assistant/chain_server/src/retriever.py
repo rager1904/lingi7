@@ -124,15 +124,30 @@ class RetrieverAgent():
             
             # Format the response with product details
             if results["texts"]:
-                products = []
+                product_lines = []
                 retrieved_dict = {}
-                for text, name, img, sim in zip(results["texts"], results["names"], results["images"], results["similarities"]):
-                    products.append(text)
+                product_cards = []
+                for text, name, img, sim, pid in zip(
+                    results["texts"],
+                    results["names"],
+                    results["images"],
+                    results["similarities"],
+                    results["ids"],
+                ):
+                    product_lines.append(text)
                     retrieved_dict[name] = img
-                state.response = f"These products are available in the catalog:\n" + "\n".join(products)
+                    price = ""
+                    if "PRICE:" in text:
+                        price = text.rsplit("PRICE:", 1)[-1].strip()
+                    product_cards.append(
+                        {"name": name, "price": price, "image": img, "pk": str(pid)}
+                    )
+                state.response = f"These products are available in the catalog:\n" + "\n".join(product_lines)
                 state.retrieved = retrieved_dict
+                state.products = product_cards
             else:
                 state.response = "Unfortunately there are no products closely matching the user's query."
+                state.products = []
             
             logging.info(f"RetrieverAgent.invoke() | Retriever returned context.")
             
@@ -341,10 +356,10 @@ Worked examples (image always attached):
             # entities for filter-only refinements ("under $100"). The catalog
             # retriever's dual text+image path still needs at least one text
             # entry to keep the text branch alive and to size the image
-            # search's k-multiplier. Fall back to the raw query text only for
-            # that wiring; the image itself remains the primary semantic
-            # signal on the image DB side.
-            if has_image and not entities:
+            # search's k-multiplier. For text-only browse queries ("what do you
+            # have"), an empty entity list would make the catalog fall back to a
+            # meaningless placeholder, so use the raw query as the signal.
+            if not entities:
                 entities = [user_question]
 
             logging.info(

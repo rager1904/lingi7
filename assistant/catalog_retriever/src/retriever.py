@@ -406,9 +406,23 @@ class Retriever:
         # Milvus reserves the "pk" metadata key — store record identity under
         # a custom "product_id" key instead.
         df = df.drop(columns=["pk"], errors="ignore")
-        metadatas = df.to_dict(orient="records")
-        combined_texts = [f"{name} | {desc} | {category},{subcategory}" for name, desc, category, subcategory in zip(df["name"].tolist(), df["description"].tolist(), df["category"].tolist(), df["subcategory"].tolist())]
-        
+        # pandas turns blank CSV cells into NaN (float), which breaks the
+        # all-varchar Milvus schema and the embedded text. Normalise every
+        # metadata value to a string so the CSV seed and the live
+        # /index/products upsert share an identical schema.
+        metadatas = [
+            {
+                key: "" if pd.isna(value) else str(value)
+                for key, value in record.items()
+            }
+            for record in df.to_dict(orient="records")
+        ]
+        combined_texts = [
+            f"{meta['name']} | {meta['description']} | {meta['category']},{meta['subcategory']}"
+            for meta in metadatas
+        ]
+        image_refs = [meta["image"] for meta in metadatas]
+
         # Embed the combined name and description fields
         text_embs = self.text_embeddings(combined_texts,query_type="passage",verbose=verbose)
 
@@ -427,16 +441,16 @@ class Retriever:
         logging.info(f"CATALOG RETRIEVER | Retriever.milvus_from_csv() | Text embeddings obtained.")   
 
         # Embed the image field of each row
-        image_embs = self.image_embeddings(df["image"].tolist(), verbose=verbose)
+        image_embs = self.image_embeddings(image_refs, verbose=verbose)
 
         # Log the number of total and failed image embeddings
-        total_images = len(df["image"].tolist())
+        total_images = len(image_refs)
         failed_image_embeddings = total_images - len([e for e in image_embs if e is not None])
         logging.info(f"CATALOG RETRIEVER | Retriever.milvus_from_csv() | Total images: {total_images}, Failed embeddings: {failed_image_embeddings}")
 
         # Filter out failed embeddings and their corresponding metadata
         successful_images_data = [
-            (img_ref, emb, meta) for img_ref, emb, meta in zip(df["image"].tolist(), image_embs, metadatas) if emb is not None
+            (img_ref, emb, meta) for img_ref, emb, meta in zip(image_refs, image_embs, metadatas) if emb is not None
         ]
         if successful_images_data:
             successful_images, successful_image_embs, successful_image_metadatas = zip(*successful_images_data)

@@ -8,6 +8,9 @@ from sqlalchemy.orm import sessionmaker
 from typing import Optional
 import logging
 import time
+import os
+
+os.makedirs("/app/data", exist_ok=True)
 
 DATABASE_URL = "sqlite:////app/data/context.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})

@@ -756,6 +756,7 @@ class Command(BaseCommand):
             options["last_name"],
         )
         self._ensure_kyc_approved(user, admin)
+        user.refresh_from_db()
         try:
             store = self._ensure_store_approved(user, store_name, admin)
         except Exception as exc:

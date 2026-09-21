@@ -76,7 +76,9 @@ def _serialize_instance(instance: Any) -> dict[str, Any]:
             return [_safe(v) for v in value]
         if isinstance(value, (set, frozenset)):
             return [_safe(v) for v in sorted(value, key=str)]
-        return value
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+        return str(value)
 
     return {k: _safe(v) for k, v in raw.items() if k not in SENSITIVE_FIELDS}
 

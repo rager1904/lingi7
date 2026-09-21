@@ -11,6 +11,7 @@ from .functions import retrieval_extraction_function, parse_tool_call_fallback
 from openai import OpenAI
 import os
 import json
+import re
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry

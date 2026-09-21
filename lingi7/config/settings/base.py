@@ -187,7 +187,7 @@ REST_FRAMEWORK = {
         "registration": "20/hour",
         "auth": "10/minute",
         "ai": "60/hour",
-        "assistant": "30/hour",
+        "assistant": "200/hour",
     },
     "EXCEPTION_HANDLER": "apps.core.exceptions.lingi7_exception_handler",
 }

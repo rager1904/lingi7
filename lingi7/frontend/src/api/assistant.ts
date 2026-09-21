@@ -43,6 +43,10 @@ export async function sendAssistantQuery(
     context: payload.context ?? "",
     image: payload.image ?? "",
     guardrails: payload.guardrails ?? true,
+  }, {
+    // CPU inference can take well over the global 30s default; the Django
+    // gateway waits up to ASSISTANT_CHAIN_TIMEOUT (180s), so match it here.
+    timeout: 180_000,
   });
 
   return {

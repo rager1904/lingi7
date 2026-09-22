@@ -97,8 +97,6 @@ def poll_pending_payment_status(self, payment_attempt_id: str) -> None:
     Args:
         payment_attempt_id: UUID string of the PaymentAttempt to check.
     """
-    from django.conf import settings
-
     from .models import PaymentAttempt
     from .services import PaymentService
 
@@ -140,7 +138,9 @@ def poll_pending_payment_status(self, payment_attempt_id: str) -> None:
             result = client.get_payment_status(attempt.provider_reference)
             event_type = result.status  # "TS", "TF", "TP"
 
-        # Process via webhook handler for consistent handling
+        # Process via webhook handler for consistent handling.
+        # This is a server-side, token-authenticated status poll (not an
+        # inbound webhook), so treat the result as signature-valid.
         if event_type not in ("PENDING", "TP"):
             PaymentService.process_webhook(
                 provider=attempt.provider,
@@ -148,7 +148,7 @@ def poll_pending_payment_status(self, payment_attempt_id: str) -> None:
                 event_type=event_type,
                 payload=result.raw_response,
                 headers={},
-                signature_valid=settings.DEBUG,
+                signature_valid=True,
             )
 
     except Exception as exc:

@@ -33,7 +33,7 @@ cryptography==43.0.1          # Required by django-otp
 
 # ── API Clients ──────────────────────────────────────────────────────────────
 httpx==0.27.2                 # Async HTTP client for payment provider APIs
-africastalking==2.9.0         # SMS gateway for Zambia (MTN/Airtel direct)
+africastalking==2.0.3         # SMS gateway for Zambia (MTN/Airtel direct)
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 python-decouple==3.8          # Environment variable loading

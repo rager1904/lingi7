@@ -258,7 +258,11 @@ class MTNMoMoClient:
             MTNPaymentResult. On success, status is "PENDING" — confirmed
             later via webhook or polling.
         """
-        ref_id = idempotency_key or str(uuid.uuid4())
+        # X-Reference-Id must be a UUID — MTN rejects non-UUID (e.g. our
+        # internal idempotency_key "COLLECT-<escrow>-<n>") with HTTP 400.
+        # A fresh UUID is generated per attempt; the platform's idempotency_key
+        # is only used for our own dedup, never on the wire.
+        ref_id = str(uuid.uuid4())
         url = f"{self._base_url}{self._COLLECTION_BASE}/requesttopay"
 
         payload: dict[str, Any] = {

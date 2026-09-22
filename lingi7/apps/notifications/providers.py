@@ -46,6 +46,25 @@ class DebugSMSProvider:
         return SendResult(success=True, provider_ref="DEBUG-SMS-REF")
 
 
+class NotConfiguredSMSProvider:
+    """
+    SMS provider for production when no live SMS gateway is configured.
+
+    Returns an explicit failure so NotificationLog records the real
+    reason instead of silently marking the message as SENT when nothing
+    was ever delivered.
+    """
+
+    def send(self, phone_number: str, message: str) -> "SendResult":
+        return SendResult(
+            success=False,
+            error=(
+                "No SMS gateway configured: set BREVO_SMS_SENDER "
+                "(Brevo) or AT_API_KEY (Africa's Talking)."
+            ),
+        )
+
+
 class BrevoSMSProvider:
     """
     SMS provider using the Brevo Transactional SMS API v3.

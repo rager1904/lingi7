@@ -30,7 +30,7 @@ from apps.notifications.models import (
     NotificationLog,
     NotificationStatus,
 )
-from apps.notifications.providers import SendResult
+from apps.notifications.providers import NotConfiguredSMSProvider, SendResult
 from apps.notifications.services import NotificationService
 from apps.notifications.tasks import (
     check_failed_notifications,
@@ -78,9 +78,10 @@ def vendor_user(db):
 
 @pytest.fixture
 def mock_sms_success():
-    """Patch AT SMS provider to return success."""
+    """Patch SMS provider to return success."""
     with patch(
-        "apps.notifications.services.NotificationService._sms_provider"
+        "apps.notifications.services.NotificationService._sms_provider",
+        create=True,
     ) as mock:
         mock.send.return_value = SendResult(success=True, provider_ref="AT-MSG-001")
         yield mock
@@ -88,9 +89,10 @@ def mock_sms_success():
 
 @pytest.fixture
 def mock_sms_failure():
-    """Patch AT SMS provider to return failure."""
+    """Patch SMS provider to return failure."""
     with patch(
-        "apps.notifications.services.NotificationService._sms_provider"
+        "apps.notifications.services.NotificationService._sms_provider",
+        create=True,
     ) as mock:
         mock.send.return_value = SendResult(success=False, error="Insufficient credit")
         yield mock
@@ -100,7 +102,8 @@ def mock_sms_failure():
 def mock_email_success():
     """Patch email provider to return success."""
     with patch(
-        "apps.notifications.services.NotificationService._email_provider"
+        "apps.notifications.services.NotificationService._email_provider",
+        create=True,
     ) as mock:
         mock.send.return_value = SendResult(success=True, provider_ref="")
         yield mock
@@ -357,7 +360,8 @@ class TestNotificationService:
     def test_provider_exception_does_not_raise_to_caller(self, buyer_user):
         """Notification failures must never propagate to the calling transaction."""
         with patch(
-            "apps.notifications.services.NotificationService._sms_provider"
+            "apps.notifications.services.NotificationService._sms_provider",
+            create=True,
         ) as mock:
             mock.send.side_effect = RuntimeError("Unexpected crash")
             # Must NOT raise
@@ -369,6 +373,42 @@ class TestNotificationService:
             )
             assert log is not None
             assert log.status == NotificationStatus.FAILED
+
+
+# ---------------------------------------------------------------------------
+# SMS provider selection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestSMSPProviderSelection:
+    def test_no_gateway_in_prod_marks_log_failed(self, buyer_user):
+        if hasattr(NotificationService, "_sms_provider"):
+            del NotificationService._sms_provider
+        log = NotificationService.send_sms(
+            phone_number="+260971000001",
+            event_type=NotificationEventType.ORDER_PLACED,
+            context={"order_id": "ORD-001", "amount": "ZMW 1,200"},
+            recipient=buyer_user,
+        )
+        if hasattr(NotificationService, "_sms_provider"):
+            del NotificationService._sms_provider
+        # DEBUG is off in tests and no SMS creds are configured — the log
+        # must show the real reason, not a fake SENT.
+        assert log is not None
+        assert log.status == NotificationStatus.FAILED
+        assert "no sms gateway configured" in log.error_message.lower()
+
+    def test_provider_resolves_to_not_configured(self):
+        if hasattr(NotificationService, "_sms_provider"):
+            del NotificationService._sms_provider
+        provider = NotificationService._get_sms_provider()
+        if hasattr(NotificationService, "_sms_provider"):
+            del NotificationService._sms_provider
+        assert isinstance(provider, NotConfiguredSMSProvider)
+        result = provider.send("+260971000001", "test")
+        assert result.success is False
+        assert "BREVO_SMS_SENDER" in result.error
 
 
 # ---------------------------------------------------------------------------

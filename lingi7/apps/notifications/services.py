@@ -38,6 +38,7 @@ from .providers import (
     BrevoSMSProvider,
     DebugSMSProvider,
     DjangoEmailProvider,
+    NotConfiguredSMSProvider,
 )
 from .templates import NotificationTemplate, TemplateRegistry
 
@@ -78,19 +79,21 @@ class NotificationService:
         Priority:
           1. Brevo Transactional SMS (when BREVO_API_KEY and BREVO_SMS_SENDER set)
           2. Africa's Talking (when AT_API_KEY set)
-          3. Debug console logger (dev/test — never fails)
+          3. Debug console logger (dev/test only — never silently in prod)
+          4. NotConfiguredSMSProvider elsewhere — so a production SMS logs
+             FAILED with the real reason instead of appearing as SENT.
         """
         if not hasattr(cls, "_sms_provider"):
             if getattr(settings, "BREVO_API_KEY", "") and getattr(
                 settings, "BREVO_SMS_SENDER", ""
             ):
                 cls._sms_provider = BrevoSMSProvider()
-            elif getattr(settings, "AT_API_KEY", "") and not getattr(
-                settings, "NOTIFICATIONS_DEBUG_MODE", False
-            ):
+            elif getattr(settings, "AT_API_KEY", ""):
                 cls._sms_provider = AfricasTalkingSMSProvider()
-            else:
+            elif getattr(settings, "NOTIFICATIONS_DEBUG_MODE", settings.DEBUG):
                 cls._sms_provider = DebugSMSProvider()
+            else:
+                cls._sms_provider = NotConfiguredSMSProvider()
         return cls._sms_provider
 
     @classmethod

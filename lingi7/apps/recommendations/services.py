@@ -192,13 +192,17 @@ def get_trending_products(limit: int = 20) -> list[Product]:
         .values_list("product_id", "c")
     )
 
-    # Recent purchases per product (via OrderLine)
-    buy_counts = dict(
+    # Recent purchases per product (via OrderLine) — product_id is a
+    # denormalised string snapshot, so coerce back to int PKs.
+    buy_counts = Counter()
+    for pid, count in (
         OrderLine.objects.filter(order__created_at__gte=cutoff)
         .values_list("product_id")
         .annotate(c=Count("id"))
         .values_list("product_id", "c")
-    )
+    ):
+        for int_pid in _coerce_product_ids([pid]):
+            buy_counts[int_pid] += count
 
     # Score all visible products
     product_ids = set(like_counts) | set(view_counts) | set(buy_counts)
@@ -266,7 +270,9 @@ def get_similar_users_top_picks(user, limit: int = 20) -> list[Product]:
         Wishlist.objects.filter(user_id__in=similar_user_ids).values_list("product_id", flat=True)
     )
     engaged_product_ids.update(
-        OrderLine.objects.filter(order__buyer_id__in=similar_user_ids).values_list("product_id", flat=True)
+        _coerce_product_ids(
+            OrderLine.objects.filter(order__buyer_id__in=similar_user_ids).values_list("product_id", flat=True)
+        )
     )
 
     # Exclude products the current user already engaged with
@@ -299,7 +305,7 @@ def get_for_you_feed(user, limit: int = 20) -> list[dict[str, Any]]:
             "title": "Trending Now",
             "subtitle": "Popular across the marketplace",
             "strategy": "popularity",
-            "products": _serialize(_get_trending(limit=limit)),
+            "products": _serialize(get_trending_products(limit=limit)),
         })
         sections.append({
             "title": "New Arrivals",
@@ -479,11 +485,11 @@ def _collaborative_scores(user, candidates) -> dict[int, float]:
         .values_list("product_id", flat=True)
     ):
         item_scores[product_id] += 1
-    for product_id in (
+    for int_pid in _coerce_product_ids(
         OrderLine.objects.filter(order__buyer_id__in=similar_user_ids)
         .values_list("product_id", flat=True)
     ):
-        item_scores[product_id] += 2  # Purchases weighted higher
+        item_scores[int_pid] += 2  # Purchases weighted higher
 
     if not item_scores:
         return {}
@@ -560,7 +566,7 @@ def _popularity_scores(candidates) -> dict[int, float]:
 
 def _purchase_history_scores(user, candidates) -> dict[int, float]:
     """Boost products in categories the user has previously purchased."""
-    purchased_cats = (
+    purchased_cats = _coerce_product_ids(
         OrderLine.objects.filter(order__buyer=user)
         .values_list("product_id", flat=True)
     )
@@ -716,9 +722,10 @@ def _build_preferences(user) -> dict:
         prices.append(float(p.price))
 
     # From purchases
-    purchased_ids = OrderLine.objects.filter(
-        order__buyer=user
-    ).values_list("product_id", flat=True)
+    purchased_ids = _coerce_product_ids(
+        OrderLine.objects.filter(order__buyer=user)
+        .values_list("product_id", flat=True)
+    )
     purchased_products = Product.objects.filter(pk__in=purchased_ids).select_related("category")
     for p in purchased_products:
         if p.category:
@@ -816,10 +823,29 @@ def _user_engaged_product_ids(user) -> set[int]:
     ids.update(ProductLike.objects.filter(user=user).values_list("product_id", flat=True))
     ids.update(Wishlist.objects.filter(user=user).values_list("product_id", flat=True))
     ids.update(
-        OrderLine.objects.filter(order__buyer=user).values_list("product_id", flat=True)
+        _coerce_product_ids(
+            OrderLine.objects.filter(order__buyer=user).values_list("product_id", flat=True)
+        )
     )
     ids.update(ProductView.objects.filter(user=user).values_list("product_id", flat=True))
     ids.update(ProductRating.objects.filter(user=user).values_list("product_id", flat=True))
+    return ids
+
+
+def _coerce_product_ids(values) -> set[int]:
+    """Coerce denormalised OrderLine.product_id strings to int product PKs.
+
+    OrderLine snapshots product_id as a CharField so catalogue changes can't
+    corrupt order history; any value that isn't a valid integer is skipped.
+    """
+    ids: set[int] = set()
+    for value in values:
+        if value is None or value == "":
+            continue
+        try:
+            ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
     return ids
 
 

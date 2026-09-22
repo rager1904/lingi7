@@ -802,7 +802,7 @@ class EscrowService:
             from apps.admin_audit.models import AdminAuditLog  # avoid circular at module level
 
             AdminAuditLog.objects.create(
-                actor=actor_ref,
+                actor_id=actor_ref,
                 action_type=action,
                 target_content_type="escrow.escrowaccount",
                 target_object_id=str(object_id),

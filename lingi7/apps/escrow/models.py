@@ -172,7 +172,7 @@ class EscrowHold(models.Model):
     """
 
     class Meta:
-        db_table = "escrow_hold"
+        db_table = "escrow_hold" if connection.vendor == "sqlite" else '"escrow_ledger"."escrow_hold"'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     account = models.OneToOneField(
@@ -205,7 +205,7 @@ class FraudGateLog(models.Model):
     """
 
     class Meta:
-        db_table = "fraud_gate_log"
+        db_table = "fraud_gate_log" if connection.vendor == "sqlite" else '"escrow_ledger"."fraud_gate_log"'
         indexes = [
             models.Index(fields=["account", "created_at"], name="idx_fgl_account_ts"),
         ]
@@ -243,7 +243,7 @@ class ReconciliationLog(models.Model):
     """
 
     class Meta:
-        db_table = "reconciliation_log"
+        db_table = "reconciliation_log" if connection.vendor == "sqlite" else '"escrow_ledger"."reconciliation_log"'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 

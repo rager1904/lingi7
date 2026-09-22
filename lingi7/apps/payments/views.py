@@ -38,13 +38,13 @@ def _map_provider(provider: str) -> str:
 
 
 def _normalize_phone(phone: str) -> str:
-    """MoMo APIs expect 9-digit national number without +260."""
+    """MoMo APIs expect MSISDN (international without +), e.g. 260962431937."""
     from apps.users.phone_utils import normalize_zambian_phone
 
     e164 = normalize_zambian_phone(phone)
-    if e164.startswith("+260"):
-        return e164[4:]
-    return phone.strip().replace(" ", "").replace("-", "").lstrip("0")
+    if e164.startswith("+"):
+        return e164[1:]
+    return e164
 
 
 class PaymentInitiateView(APIView):

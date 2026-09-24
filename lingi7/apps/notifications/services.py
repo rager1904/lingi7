@@ -77,19 +77,19 @@ class NotificationService:
         """Resolve the active SMS provider.
 
         Priority:
-          1. Africa's Talking (when AT_API_KEY set) — preferred for Zambia
-          2. Brevo Transactional SMS (when BREVO_API_KEY and BREVO_SMS_SENDER set)
+          1. Brevo Transactional SMS (when BREVO_API_KEY and BREVO_SMS_SENDER set)
+          2. Africa's Talking (when AT_API_KEY set) — alternative gateway
           3. Debug console logger (dev/test only — never silently in prod)
           4. NotConfiguredSMSProvider elsewhere — so a production SMS logs
              FAILED with the real reason instead of appearing as SENT.
         """
         if not hasattr(cls, "_sms_provider"):
-            if getattr(settings, "AT_API_KEY", ""):
-                cls._sms_provider = AfricasTalkingSMSProvider()
-            elif getattr(settings, "BREVO_API_KEY", "") and getattr(
+            if getattr(settings, "BREVO_API_KEY", "") and getattr(
                 settings, "BREVO_SMS_SENDER", ""
             ):
                 cls._sms_provider = BrevoSMSProvider()
+            elif getattr(settings, "AT_API_KEY", ""):
+                cls._sms_provider = AfricasTalkingSMSProvider()
             elif getattr(settings, "NOTIFICATIONS_DEBUG_MODE", settings.DEBUG):
                 cls._sms_provider = DebugSMSProvider()
             else:

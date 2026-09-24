@@ -512,11 +512,7 @@ def _content_scores(prefs: dict, candidates) -> dict[int, float]:
     if not cat_weights and not tag_weights:
         return {}
 
-    candidate_list = list(
-        candidates.select_related("category").only(
-            "pk", "category_id", "suggested_tags", "price"
-        )
-    )
+    candidate_list = list(candidates.select_related("category"))
 
     scores = {}
     for p in candidate_list:
